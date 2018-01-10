@@ -15,6 +15,7 @@ Its status is WORK IN PROGRESS, but seems to behave correctly in debug mode.
   - `mgmanHidden` is used to manage visibility of list
   - thus the LDAP entry looks like:
 
+```LDIF
     dn: cn=<LIST>,<CONFIG.FILE-lists.public>
     objectClass: top
     objectClass: inetMailGroup
@@ -30,6 +31,6 @@ Its status is WORK IN PROGRESS, but seems to behave correctly in debug mode.
     mailHost: <ROBOT>
     mail: <LIST>@<DOMAIN>
     cn: <LIST>
-
+```
 
 
