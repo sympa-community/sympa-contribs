@@ -33,5 +33,14 @@ Its status is WORK IN PROGRESS, but seems to behave correctly in debug mode.
     mail: <LIST>@<DOMAIN>
     cn: <LIST>
 
+## TODOs, roadmap and ideas
+
+* extract `$attrs` and `$classes` from script and put them in config file to be
+  less specific and more adjustable
+* clean config file: some variables are not used
+* is it a good idea to automatically create in sympa robot lists which exist in
+  LDAP directory and whose mailHost is the robot?
+* translate comments
+* test and adapt for ldaps on port 636
 
 
