@@ -9,6 +9,8 @@ Its status is WORK IN PROGRESS, but seems to behave correctly in debug mode.
 
 ## Warnings
 
+* does not work for sympa servers with no robots (list data must look like
+  /var/path/to/ROBOT/list)
 * comments are in french
 * attributes used for LDAP are hard-coded for the moment:
   - `mgrpRFC822MailMember` is used to "forward" mail
