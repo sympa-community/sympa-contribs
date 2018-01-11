@@ -365,29 +365,22 @@ sub check_lists_from_ldap {
             # on récupère le nom de la liste
             $l =~ s/^cn=(.*?),$conf->{'lists.public'}$/$1/;
             if (defined $lists->{$r}->{'lists'}->{$l}) {
-                # la liste existe dans sympa, on vérifie les données
+                # la liste existe dans sympa, on vérifie subject et owners
                 # nok si subject ne matche pas description
                 if ($lists->{$r}->{'lists'}->{$l}->{'subject'} ne $li->get_value('description')) {
                     say "Difference found for $l description ($r) between LDAP and \$lists!" if ($debug);
                     mail_msg("Difference found for $l description ($r) between LDAP and \$lists!");
+                    say $lists->{$r}->{'lists'}->{$l}->{'subject'}.' - '.$li->get_value('description')
+                        if ($debug >= 5);
                 }
                 # nok si les owners ne matchent pas
                 if (join(',', sort(@{$li->get_value('owner', asref => 1)})) ne
                     join(',', sort(@{$lists->{$r}->{'lists'}->{$l}->{'owners'}}))) {
                     say "Difference found for $l owners ($r) between LDAP and \$lists!" if ($debug);                             
                     mail_msg("Difference found for $l owners ($r) between LDAP and \$lists!");
-                }
-                # nok si visibility ne correspond pas à mgmanHidden
-                if ($lists->{$r}->{'lists'}->{$l}->{'visibility'} =~ $conf->{'lists.pubvisi'}) {
-                    if ($li->get_value('mgmanHidden') eq 'false') {
-                        say "Difference found for $l visibility ($r) between LDAP and \$lists!" if ($debug);
-                        mail_msg("Difference found for $l visibility ($r) between LDAP and \$lists!");
-                    }
-                } else {
-                    if ($li->get_value('mgmanHidden') eq 'true') {
-                        say "Difference found for $l visibility ($r) between LDAP and \$lists!" if ($debug);
-                        mail_msg("Difference found for $l visibility ($r) between LDAP and \$lists!");
-                    }
+                    say join(',', sort(@{$li->get_value('owner', asref => 1)})).' - '.
+                        join(',', sort(@{$lists->{$r}->{'lists'}->{$l}->{'owners'}}))
+                        if ($debug >= 5);
                 }
             } else {
                 # la liste n'existe pas dans sympa => warning !
@@ -415,13 +408,21 @@ sub get_lists_for_robot {
         my @owners = ();
         while (my $confline = <$listconf>) {
             chomp($confline);
+            if ($flagown) {
+                if ($confline =~ m/^email (.*)$/) {
+                    # on récupère le mail de l'owner
+                    push(@owners, $1);
+                } elsif ($confline =~ m/^\s*$/) {
+                    # ligne vide, on remet flagown à zéro
+                    $flagown = 0;
+                }
+                next;
+            }
+            # on zappe les lignes vides / commentees
             next if ($confline =~ m/^\s*#/);
             # on récupère ensuite les items de config suivants :
             # owner, subject, visibility, status
             if ($flagown and $confline =~ m/^email (.*)$/) {
-                push(@owners, $1);
-                $flagown = 0;
-                next;
             }
             if ($confline =~ m/^subject (.*)$/) {
                 $lists->{$r}->{'lists'}->{$l}->{'subject'} = $1;
