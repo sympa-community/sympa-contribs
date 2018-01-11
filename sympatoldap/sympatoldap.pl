@@ -157,21 +157,35 @@ while (not $end) {
             # 1 => trop de listes avec le même cn dans le ldap
             if ($err == 1) {
                 say "Too much lists with same cn in LDAP Directory, giving up!" if ($debug);
+                $scanInt = $conf->{'scan.error'};
                 # next évite au flagfile de se faire `touch`er
                 next; 
+            } elsif ($err == 2) {
+                say "Error while connecting to LDAP, giving up!" if ($debug);
+                $scanInt = $conf->{'scan.error'};
+                # next évite au flagfile de se faire `touch`er
+                next;
             }
             # on touche le flagfile
             system("touch ".$conf->{'main.flagfile'});
+            $scanInt = $conf->{'scan.default'};
         } elsif ( @modiflists ) {
             # il y a des listes modifiees
             $err = lists_modification(@modiflists);
             if ($err == 1) {
                 say "Too much lists with same cn in LDAP Directory, giving up!" if ($debug);
+                $scanInt = $conf->{'scan.error'};
                 # next évite au flagfile de se faire `touch`er
                 next; 
+            } elsif ($err == 2) {
+                say "Error while connecting to LDAP, giving up!" if ($debug);
+                $scanInt = $conf->{'scan.error'};
+                # next évite au flagfile de se faire `touch`er
+                next;
             }
             # on touche le flagfile
             system("touch ".$conf->{'main.flagfile'});
+            $scanInt = $conf->{'scan.default'};
         }
     }
 }
@@ -225,13 +239,6 @@ sub get_robot_list {
         } else {
             # sinon, on met primary à 0
             $lists->{$r}->{'primary'} = 0;
-        }
-        if ($conf->{'lists.aliases'} eq $r) {
-            # il faut créer des aliases en 'main.domaine'
-            $lists->{$r}->{'createAliases'} = 1;
-        } else {
-            # sinon, on ne crée pas d'aliases
-            $lists->{$r}->{'createAliases'} = 0;
         }
         say Dumper($lists->{$r}) if ($debug >= 6);
     }
@@ -320,15 +327,76 @@ sub daily_check {
                 mail_msg("Too much cn for list $l (robot $r)!");
                 return 1; 
             } else {
-                # TODO: problèm de connexion au LDAP
+                # problèm de connexion au LDAP
+                say "Error encountered while connecting to LDAP" if ($debug);
+                mail_msg("Error encountered while connecting to LDAP");
+                return 2;
             }
         }
-        # TODO: il faut maintenant checker chaque liste LDAP ayant $r pour
-        # mailHost pour vérifier qu'elle existe dans sympa
+        # on vérifie que chaque liste LDAP ayant $r pour mailHost existe dans sympa
+        check_lists_from_ldap($r);
     }
     # envoi du mail de CR
     sendMail();
     return 0;
+}
+
+sub check_lists_from_ldap {
+    my $r = shift;
+    say "Get lists from LDAP for mailHost $r" if ($debug);
+    my $ldap = Net::LDAP->new($conf->{'ldap.host'}, port => $conf->{'ldap.port'});
+    $ldap->bind(dn => $conf->{'ldap.binddn'}, password => $conf->{'ldap.bindpwd'});
+    # on cherche mailHost=$r dans le ldap
+    my $msg = $ldap->search(
+        base   => $conf->{'ldap.base'},
+        filter => "(mailHost=$r)",
+        attrs  => $attrs );
+    $msg->code() and return 5;
+    $ldap->unbind;
+    if ($msg->entries == 0) {
+        say "None list found in LDAP for robot $r, seems weird!" if ($debug);
+        mail_msg("None list found in LDAP for robot $r, seems weird!");
+    } else {
+        foreach my $li ($msg->entries) {
+            my $l = $li->dn();
+            my $regexp = '('.join('|', split(',', $conf->{'sympa.suffix'})).')';
+            # on zappe les aliases
+            next if ($l =~ m/^cn=.*?$regexp,$conf->{'lists.conceal'}$/);
+            # on récupère le nom de la liste
+            $l =~ s/^cn=(.*?),$conf->{'lists.public'}$/$1/;
+            if (defined $lists->{$r}->{'lists'}->{$l}) {
+                # la liste existe dans sympa, on vérifie les données
+                # nok si subject ne matche pas description
+                if ($lists->{$r}->{'lists'}->{$l}->{'subject'} ne $li->get_value('description')) {
+                    say "Difference found for $l description ($r) between LDAP and \$lists!" if ($debug);
+                    mail_msg("Difference found for $l description ($r) between LDAP and \$lists!");
+                }
+                # nok si les owners ne matchent pas
+                if (join(',', sort(@{$li->get_value('owner', asref => 1)})) ne
+                    join(',', sort(@{$lists->{$r}->{'lists'}->{$l}->{'owners'}}))) {
+                    say "Difference found for $l owners ($r) between LDAP and \$lists!" if ($debug);                             
+                    mail_msg("Difference found for $l owners ($r) between LDAP and \$lists!");
+                }
+                # nok si visibility ne correspond pas à mgmanHidden
+                if ($lists->{$r}->{'lists'}->{$l}->{'visibility'} =~ $conf->{'lists.pubvisi'}) {
+                    if ($li->get_value('mgmanHidden') eq 'false') {
+                        say "Difference found for $l visibility ($r) between LDAP and \$lists!" if ($debug);
+                        mail_msg("Difference found for $l visibility ($r) between LDAP and \$lists!");
+                    }
+                } else {
+                    if ($li->get_value('mgmanHidden') eq 'true') {
+                        say "Difference found for $l visibility ($r) between LDAP and \$lists!" if ($debug);
+                        mail_msg("Difference found for $l visibility ($r) between LDAP and \$lists!");
+                    }
+                }
+            } else {
+                # la liste n'existe pas dans sympa => warning !
+                say "List $l does not exist in sympa robot $r!" if ($debug);
+                mail_msg("List $l does not exist in sympa robot $r!");
+                # TODO? création automatique via webservice
+            }
+        }
+    }
 }
 
 sub get_lists_for_robot {
@@ -633,7 +701,10 @@ sub lists_modification {
             mail_msg("Too much cn for list $l (robot $r)!");
             return 1; 
         } else {
-            # TODO: problèm de connexion au LDAP
+            # problèm de connexion au LDAP
+            say "Error encountered while connecting to LDAP" if ($debug);
+            mail_msg("Error encountered while connecting to LDAP");
+            return 2;
         }
     }
     return 0;
