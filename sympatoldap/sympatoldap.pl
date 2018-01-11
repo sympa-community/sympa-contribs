@@ -155,7 +155,7 @@ while (not $end) {
             # on lance le check quotidien
             $err = daily_check();
             # 1 => trop de listes avec le même cn dans le ldap
-            if ($err ==1) {
+            if ($err == 1) {
                 say "Too much lists with same cn in LDAP Directory, giving up!" if ($debug);
                 # next évite au flagfile de se faire `touch`er
                 next; 
@@ -164,7 +164,12 @@ while (not $end) {
             system("touch ".$conf->{'main.flagfile'});
         } elsif ( @modiflists ) {
             # il y a des listes modifiees
-            lists_modification();
+            $err = lists_modification(@modiflists);
+            if ($err == 1) {
+                say "Too much lists with same cn in LDAP Directory, giving up!" if ($debug);
+                # next évite au flagfile de se faire `touch`er
+                next; 
+            }
             # on touche le flagfile
             system("touch ".$conf->{'main.flagfile'});
         }
@@ -569,8 +574,69 @@ sub search_alias_in_ldap {
 }
 
 sub lists_modification {
-    say "Lists_modification" if ($debug);
-    # TODO: 
+    my @lists = @_;
+    # @lists contient une liste de fichiers config de listes
+    say "Lists modification: \n".join("\n", @lists) if ($debug);
+    # Pour chaque liste plus récente que le flag
+    foreach my $cf (@lists) {
+        # on éclate le chemin pour avoir le robot et la liste
+        my $r = $cf;
+        $r =~ s#^$conf->{'sympa.expl'}/([^\/]+)/([^\/]+)/config$#$1#;
+        my $l = $2;
+        # on commence par récupérer la config de la liste
+        open my $listconf, '<', $cf or die "Cannot open config file $cf: $!";
+        my $flagown = 0;
+        my @owners = ();
+        while (my $confline = <$listconf>) {
+            chomp($confline);
+            next if ($confline =~ m/^\s*#/);
+            # on récupère ensuite les items de config suivants :
+            # owner, subject, visibility, status
+            if ($flagown and $confline =~ m/^email (.*)$/) {
+                push(@owners, $1);
+                $flagown = 0;
+                next;
+            }
+            if ($confline =~ m/^subject (.*)$/) {
+                $lists->{$r}->{'lists'}->{$l}->{'subject'} = $1;
+            } elsif ($confline =~ m/^status (\w+)$/) {
+                $lists->{$r}->{'lists'}->{$l}->{'status'} = $1;
+            } elsif ($confline =~ m/^visibility (\w+)$/) {
+                $lists->{$r}->{'lists'}->{$l}->{'visibility'} = $1;
+            } elsif ($confline =~ m/^owner/) {
+                $flagown = 1;
+                next;
+            }
+        }
+        $lists->{$r}->{'lists'}->{$l}->{'owners'} = \@owners;
+        close $listconf;
+        say Dumper($lists->{$r}->{'lists'}->{$l}) if ($debug >= 6);
+        # on peut maintenant récupérer les infos du ldap et gérer le cas
+        my $n = get_listinfo_from_ldap($r, $l);
+        if ($n == 0) {
+            # liste inexistante, on la crée (avec les aliases)
+            # si le statut est ok
+            if ($lists->{$r}->{'lists'}->{$l}->{'status'} eq 'open') {
+                create_list_and_aliases($r, $l);
+            } else {
+                say 'Status is '.$lists->{$r}->{'lists'}->{$l}->{'status'}.
+                " for list $l ($r), so no creation!" if ($debug);
+                mail_msg('Status is '.$lists->{$r}->{'lists'}->{$l}->{'status'}.
+                    " for list $l ($r), so no creation!");
+            }
+        } elsif ($n == 1) {
+            # liste existante, à modifier ?
+            test_modify_list_or_aliases($r, $l);
+        } elsif ($n == 2) {
+            # plusieurs listes avec ce cn -> erreur
+            say "Too much cn for list $l (robot $r)!" if ($debug);
+            mail_msg("Too much cn for list $l (robot $r)!");
+            return 1; 
+        } else {
+            # TODO: problèm de connexion au LDAP
+        }
+    }
+    return 0;
 }
 
 __END__
