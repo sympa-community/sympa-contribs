@@ -302,7 +302,7 @@ sub daily_check {
     while (my ($r, $robot) = each %{$lists}) {
         # récup des listes sur sympa
         say "Getting lists configuration for $r" if ($debug >= 3);
-        mail_msg("Getting lists configuration for $r");
+        #mail_msg("Getting lists configuration for $r");
         get_lists_for_robot($r);
         # pour chaque liste
         while (my ($l, $list) = each %{$lists->{$r}->{'lists'}}) {
@@ -368,7 +368,8 @@ sub check_lists_from_ldap {
                 # la liste existe dans sympa, on vérifie subject et owners
                 say Dumper($lists->{$r}->{'lists'}->{$l}) if ($debug >= 6);
                 # nok si subject ne matche pas description
-                if ($lists->{$r}->{'lists'}->{$l}->{'subject'} ne $li->get_value('description')) {
+                if (defined $lists->{$r}->{'lists'}->{$l}->{'subject'}
+                        and $lists->{$r}->{'lists'}->{$l}->{'subject'} ne $li->get_value('description')) {
                     say "Difference found for $l description ($r) between LDAP and \$lists!" if ($debug);
                     mail_msg("Difference found for $l description ($r) between LDAP and \$lists!");
                     say $lists->{$r}->{'lists'}->{$l}->{'subject'}.' - '.$li->get_value('description')
@@ -425,10 +426,8 @@ sub get_lists_for_robot {
             next if ($confline =~ m/^\s*#/);
             # on récupère ensuite les items de config suivants :
             # owner, subject, visibility, status
-            if ($flagown and $confline =~ m/^email (.*)$/) {
-            }
             if ($confline =~ m/^subject (.*)$/) {
-                $lists->{$r}->{'lists'}->{$l}->{'subject'} = $1;
+                $lists->{$r}->{'lists'}->{$l}->{'subject'} = encode('utf8', $1);
             } elsif ($confline =~ m/^status (\w+)$/) {
                 $lists->{$r}->{'lists'}->{$l}->{'status'} = $1;
             } elsif ($confline =~ m/^visibility (\w+)$/) {
@@ -469,7 +468,14 @@ sub get_listinfo_from_ldap {
             say 'List found: '.$li->dn if ($debug >= 2);
             foreach my $a (@{$attrs}) {
                 if ($li->exists($a)) {
-                    $lists->{$r}->{'lists'}->{$l}->{$a} = $li->get_value($a, asref => 1);
+                    if ($a eq 'objectClass' or $a eq 'owner') {
+                        $lists->{$r}->{'lists'}->{$l}->{$a} = $li->get_value($a, asref => 1);
+                    } else {
+                        $lists->{$r}->{'lists'}->{$l}->{$a} = $li->get_value($a);
+                    }
+                    if ($a eq 'description') {
+                        $lists->{$r}->{'lists'}->{$l}->{$a} = encode('utf8', decode('utf8', $li->get_value($a, asref => 1)));
+                    }
                 }
             }
             # tout est basé sur mgrpRFC822MailMember, s'il n'est pas là, c'est bizarre
@@ -539,22 +545,25 @@ sub create_list_and_aliases {
 sub test_modify_list_or_aliases {
     my ($r, $l) = @_;
     say "Test or modify list $l ($r)" if ($debug);
-    mail_msg("Test or modify list $l ($r)");
+    #mail_msg("Test or modify list $l ($r)");
     # vérification fiche liste "principale"
     my $dn = 'cn='.$l.','.$conf->{'lists.public'};
     my $mods = {};
     my ($flagsubject, $flagowner) = (0, 0);
     say Dumper($lists->{$r}->{'lists'}->{$l}) if ($debug >= 6);
     # comparaison du sujet
-    if ($lists->{$r}->{'lists'}->{$l}->{'description'} ne $lists->{$r}->{'lists'}->{$l}->{'subject'}) {
+    if (defined $lists->{$r}->{'lists'}->{$l}->{'subject'}
+            and $lists->{$r}->{'lists'}->{$l}->{'description'} ne $lists->{$r}->{'lists'}->{$l}->{'subject'}) {
         $mods->{'description'} = $lists->{$r}->{'lists'}->{$l}->{'subject'};
         $flagsubject = 1;
     }
     # comparaison de la visibilité
-    if ($lists->{$r}->{'lists'}->{$l}->{'visibility'} =~ $conf->{'lists.pubvisi'}) {
-        $mods->{'mgmanHidden'} = 'false' if ($lists->{$r}->{'lists'}->{$l}->{'mgmanHidden'} eq 'true');
-    } else {
-        $mods->{'mgmanHidden'} = 'true' if ($lists->{$r}->{'lists'}->{$l}->{'mgmanHidden'} eq 'false');
+    if (defined $lists->{$r}->{'lists'}->{$l}->{'visibility'}) {
+        if ($lists->{$r}->{'lists'}->{$l}->{'visibility'} =~ $conf->{'lists.pubvisi'}) {
+            $mods->{'mgmanHidden'} = 'false' if ($lists->{$r}->{'lists'}->{$l}->{'mgmanHidden'} eq 'true');
+        } else {
+            $mods->{'mgmanHidden'} = 'true' if ($lists->{$r}->{'lists'}->{$l}->{'mgmanHidden'} eq 'false');
+        }
     }
     # comparaison des proprios
     if (defined $lists->{$r}->{'lists'}->{$l}->{'owner'}) {
@@ -564,6 +573,7 @@ sub test_modify_list_or_aliases {
             $flagowner = 1;
         }
     } else {
+        $mods->{'owner'} = $lists->{$r}->{'lists'}->{$l}->{'owners'};
         $flagowner = 1;
     }
     say Dumper($mods) if ($debug >= 6);
@@ -698,8 +708,8 @@ sub lists_modification {
             } else {
                 say 'Status is '.$lists->{$r}->{'lists'}->{$l}->{'status'}.
                 " for list $l ($r), so no creation!" if ($debug);
-                mail_msg('Status is '.$lists->{$r}->{'lists'}->{$l}->{'status'}.
-                    " for list $l ($r), so no creation!");
+                #mail_msg('Status is '.$lists->{$r}->{'lists'}->{$l}->{'status'}.
+                #    " for list $l ($r), so no creation!");
             }
         } elsif ($n == 1) {
             # liste existante, à modifier ?
