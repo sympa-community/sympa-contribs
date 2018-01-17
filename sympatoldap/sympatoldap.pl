@@ -155,18 +155,37 @@ while (not $end) {
             # on lance le check quotidien
             $err = daily_check();
             # 1 => trop de listes avec le même cn dans le ldap
-            if ($err ==1) {
+            if ($err == 1) {
                 say "Too much lists with same cn in LDAP Directory, giving up!" if ($debug);
+                $scanInt = $conf->{'scan.error'};
                 # next évite au flagfile de se faire `touch`er
                 next; 
+            } elsif ($err == 2) {
+                say "Error while connecting to LDAP, giving up!" if ($debug);
+                $scanInt = $conf->{'scan.error'};
+                # next évite au flagfile de se faire `touch`er
+                next;
             }
             # on touche le flagfile
             system("touch ".$conf->{'main.flagfile'});
+            $scanInt = $conf->{'scan.default'};
         } elsif ( @modiflists ) {
             # il y a des listes modifiees
-            lists_modification();
+            $err = lists_modification(@modiflists);
+            if ($err == 1) {
+                say "Too much lists with same cn in LDAP Directory, giving up!" if ($debug);
+                $scanInt = $conf->{'scan.error'};
+                # next évite au flagfile de se faire `touch`er
+                next; 
+            } elsif ($err == 2) {
+                say "Error while connecting to LDAP, giving up!" if ($debug);
+                $scanInt = $conf->{'scan.error'};
+                # next évite au flagfile de se faire `touch`er
+                next;
+            }
             # on touche le flagfile
             system("touch ".$conf->{'main.flagfile'});
+            $scanInt = $conf->{'scan.default'};
         }
     }
 }
@@ -221,13 +240,6 @@ sub get_robot_list {
             # sinon, on met primary à 0
             $lists->{$r}->{'primary'} = 0;
         }
-        if ($conf->{'lists.aliases'} eq $r) {
-            # il faut créer des aliases en 'main.domaine'
-            $lists->{$r}->{'createAliases'} = 1;
-        } else {
-            # sinon, on ne crée pas d'aliases
-            $lists->{$r}->{'createAliases'} = 0;
-        }
         say Dumper($lists->{$r}) if ($debug >= 6);
     }
     return 0;
@@ -250,16 +262,18 @@ sub connect_ldap {
 
 sub mail_msg {
     my $msg = shift;
+    say $msg if ($debug);
     push(@textMail, $msg);
 }
 
 sub sendMail {
+    say 'Sending mail report' if ($debug);
     # si $textMail n'a rien, on zappe
-    if (@textMail < 1) {
+    if (@textMail < 2) {
+        say Dumper(@textMail) if ($debug);
         @textMail = ();
         return 0;
     }
-    say 'Sending mail report' if ($debug);
     # sinon, on construit le mail
     my $d = DateTime->now();
     my $h = `hostname`;
@@ -290,7 +304,7 @@ sub daily_check {
     while (my ($r, $robot) = each %{$lists}) {
         # récup des listes sur sympa
         say "Getting lists configuration for $r" if ($debug >= 3);
-        mail_msg("Getting lists configuration for $r");
+        #mail_msg("Getting lists configuration for $r");
         get_lists_for_robot($r);
         # pour chaque liste
         while (my ($l, $list) = each %{$lists->{$r}->{'lists'}}) {
@@ -303,8 +317,8 @@ sub daily_check {
                 } else {
                     say 'Status is '.$lists->{$r}->{'lists'}->{$l}->{'status'}.
                         " for list $l ($r), so no creation!" if ($debug);
-                    mail_msg('Status is '.$lists->{$r}->{'lists'}->{$l}->{'status'}.
-                        " for list $l ($r), so no creation!");
+                    #mail_msg('Status is '.$lists->{$r}->{'lists'}->{$l}->{'status'}.
+                    #   " for list $l ($r), so no creation!");
                 }
             } elsif ($n == 1) {
                 # liste existante, à modifier ?
@@ -315,15 +329,73 @@ sub daily_check {
                 mail_msg("Too much cn for list $l (robot $r)!");
                 return 1; 
             } else {
-                # TODO: problèm de connexion au LDAP
+                # problèm de connexion au LDAP
+                say "Error encountered while connecting to LDAP" if ($debug);
+                mail_msg("Error encountered while connecting to LDAP");
+                return 2;
             }
         }
-        # TODO: il faut maintenant checker chaque liste LDAP ayant $r pour
-        # mailHost pour vérifier qu'elle existe dans sympa
+        # on vérifie que chaque liste LDAP ayant $r pour mailHost existe dans sympa
+        check_lists_from_ldap($r);
     }
     # envoi du mail de CR
     sendMail();
     return 0;
+}
+
+sub check_lists_from_ldap {
+    my $r = shift;
+    say "Get lists from LDAP for mailHost $r" if ($debug);
+    my $ldap = Net::LDAP->new($conf->{'ldap.host'}, port => $conf->{'ldap.port'});
+    $ldap->bind(dn => $conf->{'ldap.binddn'}, password => $conf->{'ldap.bindpwd'});
+    # on cherche mailHost=$r dans le ldap
+    my $msg = $ldap->search(
+        base   => $conf->{'ldap.base'},
+        filter => "(mailHost=$r)",
+        attrs  => $attrs );
+    $msg->code() and return 5;
+    $ldap->unbind;
+    if ($msg->entries == 0) {
+        say "None list found in LDAP for robot $r, seems weird!" if ($debug);
+        mail_msg("None list found in LDAP for robot $r, seems weird!");
+    } else {
+        foreach my $li ($msg->entries) {
+            my $l = $li->dn();
+            my $regexp = '('.join('|', split(',', $conf->{'sympa.suffix'})).')';
+            # on zappe les aliases
+            next if ($l =~ m/^cn=.*?$regexp,$conf->{'lists.conceal'}$/);
+            # on récupère le nom de la liste
+            $l =~ s/^cn=(.*?),$conf->{'lists.public'}$/$1/;
+            if (defined $lists->{$r}->{'lists'}->{$l}) {
+                # la liste existe dans sympa, on vérifie subject et owners
+                say Dumper($lists->{$r}->{'lists'}->{$l}) if ($debug >= 6);
+                # nok si subject ne matche pas description
+                if (defined $lists->{$r}->{'lists'}->{$l}->{'subject'}
+                        and $lists->{$r}->{'lists'}->{$l}->{'subject'} ne $li->get_value('description')) {
+                    say "Difference found for $l description ($r) between LDAP and \$lists!" if ($debug);
+                    mail_msg("Difference found for $l description ($r) between LDAP and \$lists!");
+                    say $lists->{$r}->{'lists'}->{$l}->{'subject'}.' - '.$li->get_value('description')
+                        if ($debug >= 5);
+                }
+                # nok si les owners ne matchent pas
+                if (defined $li->get_value('owner')) {
+                    if (join(',', sort(@{$li->get_value('owner', asref => 1)})) ne
+                        join(',', sort(@{$lists->{$r}->{'lists'}->{$l}->{'owners'}}))) {
+                        say "Difference found for $l owners ($r) between LDAP and \$lists!" if ($debug);
+                        mail_msg("Difference found for $l owners ($r) between LDAP and \$lists!");
+                        say join(',', sort(@{$li->get_value('owner', asref => 1)})).' - '.
+                            join(',', sort(@{$lists->{$r}->{'lists'}->{$l}->{'owners'}}))
+                            if ($debug >= 5);
+                    }
+                }
+            } else {
+                # la liste n'existe pas dans sympa => warning !
+                say "List $l does not exist in sympa robot $r!" if ($debug);
+                mail_msg("List $l does not exist in sympa robot $r!");
+                # TODO? création automatique via webservice
+            }
+        }
+    }
 }
 
 sub get_lists_for_robot {
@@ -341,17 +413,26 @@ sub get_lists_for_robot {
         my $flagown = 0;
         my @owners = ();
         while (my $confline = <$listconf>) {
+            if (not utf8::is_utf8($confline)) {
+                $confline = encode('utf8', decode('iso-8859-1', $confline));
+            }
             chomp($confline);
+            if ($flagown) {
+                if ($confline =~ m/^\s*email (.*)$/) {
+                    # on récupère le mail de l'owner
+                    push(@owners, $1);
+                } elsif ($confline =~ m/^\s*$/) {
+                    # ligne vide, on remet flagown à zéro
+                    $flagown = 0;
+                }
+                next;
+            }
+            # on zappe les lignes vides / commentees
             next if ($confline =~ m/^\s*#/);
             # on récupère ensuite les items de config suivants :
             # owner, subject, visibility, status
-            if ($flagown and $confline =~ m/^email (.*)$/) {
-                push(@owners, $1);
-                $flagown = 0;
-                next;
-            }
             if ($confline =~ m/^subject (.*)$/) {
-                $lists->{$r}->{'lists'}->{$l}->{'subject'} = $1;
+                $lists->{$r}->{'lists'}->{$l}->{'subject'} = encode('utf8', $1);
             } elsif ($confline =~ m/^status (\w+)$/) {
                 $lists->{$r}->{'lists'}->{$l}->{'status'} = $1;
             } elsif ($confline =~ m/^visibility (\w+)$/) {
@@ -362,6 +443,11 @@ sub get_lists_for_robot {
             }
         }
         $lists->{$r}->{'lists'}->{$l}->{'owners'} = \@owners;
+        if (not defined $lists->{$r}->{'lists'}->{$l}->{'subject'}
+                or $lists->{$r}->{'lists'}->{$l}->{'subject'} = '') {
+            say "No subject for $l ($r), picking name list instead" if ($debug >= 2);
+            $lists->{$r}->{'lists'}->{$l}->{'subject'} = $l;
+        }
         close $listconf;
         say Dumper($lists->{$r}->{'lists'}->{$l}) if ($debug >= 6);
     }
@@ -392,7 +478,14 @@ sub get_listinfo_from_ldap {
             say 'List found: '.$li->dn if ($debug >= 2);
             foreach my $a (@{$attrs}) {
                 if ($li->exists($a)) {
-                    $lists->{$r}->{'lists'}->{$l}->{$a} = $li->get_value($a, asref => 1);
+                    if ($a eq 'objectClass' or $a eq 'owner') {
+                        $lists->{$r}->{'lists'}->{$l}->{$a} = $li->get_value($a, asref => 1);
+                    } else {
+                        $lists->{$r}->{'lists'}->{$l}->{$a} = $li->get_value($a);
+                    }
+                    if ($a eq 'description') {
+                        $lists->{$r}->{'lists'}->{$l}->{$a} = encode('utf8', decode('utf8', $li->get_value($a)));
+                    }
                 }
             }
             # tout est basé sur mgrpRFC822MailMember, s'il n'est pas là, c'est bizarre
@@ -413,6 +506,7 @@ sub get_listinfo_from_ldap {
 
 sub create_list_and_aliases {
     my ($r, $l) = @_;
+    my $result;
     say "Create list $l and its aliases ($r) in LDAP" if ($debug);
     mail_msg("Create list $l and its aliases ($r) in LDAP");
     # création liste principale dans 'lists.public'
@@ -425,7 +519,7 @@ sub create_list_and_aliases {
     $hid = 'false' if ($lists->{$r}->{'lists'}->{$l}->{'visibility'} =~ $conf->{'lists.pubvisi'});
     my $mail = $l.'@'.$r;
     $mail = $l.'@'.$conf->{'main.domaine'} if ($conf->{'lists.aliases'} eq $r);
-    my $attributes = {
+    my $attributes = [
         objectClass           => $classes,
         cn                    => $l,
         description           => $lists->{$r}->{'lists'}->{$l}->{'subject'},
@@ -434,8 +528,11 @@ sub create_list_and_aliases {
         owner                 => $lists->{$r}->{'lists'}->{$l}->{'owners'},
         inetMailGroupStatus   => 'active',
         mgrpRFC822MailMember  => $l.'@'.$r,
-        mailHost              => $r};
-    $ldap->add($dn, attrs => $attributes) if (not $conf->{'main.test'});
+        mailHost              => $r];
+    if (not $conf->{'main.test'}) {
+        $result = $ldap->add($dn, attrs => $attributes);
+        $result->code and mail_msg("Adding of $dn failed: ".$result->error);
+    }
     say "$dn".Dumper($attributes) if ($debug >= 6);
     # création aliases dans 'lists.conceal'
     foreach my $s (split(',', $conf->{'sympa.suffix'})) {
@@ -443,7 +540,7 @@ sub create_list_and_aliases {
         my $adn = 'cn='.$l.$s.','.$conf->{'lists.conceal'};
         my $mail = $l.$s.'@'.$r;
         $mail = $l.$s.'@'.$conf->{'main.domaine'} if ($conf->{'lists.aliases'} eq $r);
-        my $aattrs = {
+        my $aattrs = [
             objectClass           => $classes,
             cn                    => $l.$s,
             description           => "Alias $s pour ".$lists->{$r}->{'lists'}->{$l}->{'subject'},
@@ -452,43 +549,67 @@ sub create_list_and_aliases {
             owner                 => $lists->{$r}->{'lists'}->{$l}->{'owners'},
             inetMailGroupStatus   => 'active',
             mgrpRFC822MailMember  => $l.$s.'@'.$r,
-            mailHost              => $r};
-        $ldap->add($adn, attrs => $aattrs) if (not $conf->{'main.test'});
+            mailHost              => $r];
         say "$adn".Dumper($aattrs) if ($debug >= 6);
+        if (not $conf->{'main.test'}) {
+            $result = $ldap->add($dn, attrs => $aattrs);
+            $result->code and mail_msg("Adding of $adn failed: ".$result->error);
+        }
     }
     $ldap->unbind;
 }
 
 sub test_modify_list_or_aliases {
     my ($r, $l) = @_;
+    my $result;
     say "Test or modify list $l ($r)" if ($debug);
-    mail_msg("Test or modify list $l ($r)");
+    #mail_msg("Test or modify list $l ($r)");
     # vérification fiche liste "principale"
     my $dn = 'cn='.$l.','.$conf->{'lists.public'};
     my $mods = {};
-    my ($flagsubject, $flagowner) = (0, 0);
+    my ($flagsubject, $flagvisi, $flagowner) = (0, 0, 0);
+    say Dumper($lists->{$r}->{'lists'}->{$l}) if ($debug >= 6);
     # comparaison du sujet
-    if ($lists->{$r}->{'lists'}->{$l}->{'description'} ne $lists->{$r}->{'lists'}->{$l}->{'subject'}) {
+    if (defined $lists->{$r}->{'lists'}->{$l}->{'subject'}
+            and $lists->{$r}->{'lists'}->{$l}->{'description'} ne $lists->{$r}->{'lists'}->{$l}->{'subject'}) {
         $mods->{'description'} = $lists->{$r}->{'lists'}->{$l}->{'subject'};
         $flagsubject = 1;
     }
     # comparaison de la visibilité
-    if ($lists->{$r}->{'lists'}->{$l}->{'visibility'} =~ $conf->{'lists.pubvisi'}) {
-        $mods->{'mgmanHidden'} = 'false' if ($lists->{$r}->{'lists'}->{$l}->{'mgmanHidden'} eq 'true');
-    } else {
-        $mods->{'mgmanHidden'} = 'true' if ($lists->{$r}->{'lists'}->{$l}->{'mgmanHidden'} eq 'false');
+    if (defined $lists->{$r}->{'lists'}->{$l}->{'visibility'}) {
+        if ($lists->{$r}->{'lists'}->{$l}->{'visibility'} =~ $conf->{'lists.pubvisi'}) {
+            if ($lists->{$r}->{'lists'}->{$l}->{'mgmanHidden'} eq 'true') {
+                $mods->{'mgmanHidden'} = 'false';
+                $flagvisi = 1;
+            }
+        } else {
+            if ($lists->{$r}->{'lists'}->{$l}->{'mgmanHidden'} eq 'false') {
+                $mods->{'mgmanHidden'} = 'true';
+                $flagvisi = 1;
+            }
+        }
     }
     # comparaison des proprios
-    if (join(',', sort(@{$lists->{$r}->{'lists'}->{$l}->{'owner'}})) ne
-        join(',', sort(@{$lists->{$r}->{'lists'}->{$l}->{'owners'}}))) {
+    if (defined $lists->{$r}->{'lists'}->{$l}->{'owner'}) {
+        if (join(',', sort(@{$lists->{$r}->{'lists'}->{$l}->{'owner'}})) ne
+            join(',', sort(@{$lists->{$r}->{'lists'}->{$l}->{'owners'}}))) {
+            $mods->{'owner'} = $lists->{$r}->{'lists'}->{$l}->{'owners'};
+            $flagowner = 1;
+        }
+    } else {
         $mods->{'owner'} = $lists->{$r}->{'lists'}->{$l}->{'owners'};
         $flagowner = 1;
     }
     say Dumper($mods) if ($debug >= 6);
     my $ldap = Net::LDAP->new($conf->{'ldap.host'}, port => $conf->{'ldap.port'});
     $ldap->bind(dn => $conf->{'ldap.binddn'}, password => $conf->{'ldap.bindpwd'});
-    say "Changes for $l ($r), updating LDAP list" if ($debug >= 2);
-    $ldap->modify($dn, replace => $mods) if (not $conf->{'main.test'});
+    if ($flagsubject or $flagowner or $flagvisi) {
+        say "Changes for $l ($r), updating LDAP list" if ($debug >= 2);
+        if (not $conf->{'main.test'}) {
+            $result = $ldap->modify($dn, replace => $mods);
+            $result->code and mail_msg("Modifying of $dn failed: ".$result->code);
+        }
+    }
     # vérification des aliases
     foreach my $s (split(',', $conf->{'sympa.suffix'})) {
         say "Test or modify aliases for list $l ($r)" if ($debug >= 3);
@@ -497,7 +618,7 @@ sub test_modify_list_or_aliases {
         my $exists = search_alias_in_ldap($r, $l.$s);
         if ($exists == 1) {
             # l'alias existe, on le modifie si nécessaire (flags mis sur liste principale)
-            say "Modifying alias for list $l ($r) as it exists" if ($debug >= 3);
+            #say "Modifying alias for list $l ($r) as it exists" if ($debug >= 3);
             my $adn = 'cn='.$l.$s.','.$conf->{'lists.conceal'};
             my $amods = {};
             if ($flagsubject) {
@@ -508,14 +629,17 @@ sub test_modify_list_or_aliases {
             }
             if ($flagsubject or $flagowner) {
                 say "Changes for subject or owners, updating $adn" if ($debug >= 2);
-                $ldap->modify($adn, replace => $amods) if (not $conf->{'main.test'});
+                if (not $conf->{'main.test'}) {
+                    $result = $ldap->modify($adn, replace => $amods);
+                    $result->code and mail_msg("Modifying of $adn failed: ".$result->error);
+                }
             }
         } elsif ($exists == 0) {
             # l'alias n'existe pas, on le crée
-            say "Creating alias for list $l ($r) as it doesn't exist" if ($debug >= 3);
+            mail_msg("Creating alias for list $l ($r) as it doesn't exist");
             my $mail = $l.$s.'@'.$r;
             $mail = $l.$s.'@'.$conf->{'main.domaine'} if ($conf->{'lists.aliases'} eq $r);
-            my $aattrs = {
+            my $aattrs = [
                 objectClass           => $classes,
                 cn                    => $l.$s,
                 description           => "Alias $s pour ".$lists->{$r}->{'lists'}->{$l}->{'subject'},
@@ -524,9 +648,12 @@ sub test_modify_list_or_aliases {
                 owner                 => $lists->{$r}->{'lists'}->{$l}->{'owners'},
                 inetMailGroupStatus   => 'active',
                 mgrpRFC822MailMember  => $l.$s.'@'.$r,
-                mailHost              => $r};
-            $ldap->add($adn, attrs => $aattrs) if (not $conf->{'main.test'});
-            say "$adn".Dumper($aattrs) if ($debug >= 6);
+                mailHost              => $r];
+            say "$adn\n".Dumper($aattrs) if ($debug >= 6);
+            if (not $conf->{'main.test'}) {
+                $result = $ldap->add($adn, attrs => $aattrs);
+                $result->code and (mail_msg("Adding of $adn failed: ".$result->error));
+            }
         } elsif ($exists == 2) {
             # plusieurs fiches ldap renvoyées…
             say "Too much entries in LDAP with cn=$l$s!" if ($debug);
@@ -569,8 +696,72 @@ sub search_alias_in_ldap {
 }
 
 sub lists_modification {
-    say "Lists_modification" if ($debug);
-    # TODO: 
+    my @lists = @_;
+    # @lists contient une liste de fichiers config de listes
+    mail_msg("Lists modification: \n".join("\n", @lists));
+    # Pour chaque liste plus récente que le flag
+    foreach my $cf (@lists) {
+        # on éclate le chemin pour avoir le robot et la liste
+        my $r = $cf;
+        $r =~ s#^$conf->{'sympa.expl'}/([^\/]+)/([^\/]+)/config$#$1#;
+        my $l = $2;
+        # on commence par récupérer la config de la liste
+        open my $listconf, '<', $cf or die "Cannot open config file $cf: $!";
+        my $flagown = 0;
+        my @owners = ();
+        while (my $confline = <$listconf>) {
+            chomp($confline);
+            next if ($confline =~ m/^\s*#/);
+            # on récupère ensuite les items de config suivants :
+            # owner, subject, visibility, status
+            if ($flagown and $confline =~ m/^email (.*)$/) {
+                push(@owners, $1);
+                $flagown = 0;
+                next;
+            }
+            if ($confline =~ m/^subject (.*)$/) {
+                $lists->{$r}->{'lists'}->{$l}->{'subject'} = $1;
+            } elsif ($confline =~ m/^status (\w+)$/) {
+                $lists->{$r}->{'lists'}->{$l}->{'status'} = $1;
+            } elsif ($confline =~ m/^visibility (\w+)$/) {
+                $lists->{$r}->{'lists'}->{$l}->{'visibility'} = $1;
+            } elsif ($confline =~ m/^owner/) {
+                $flagown = 1;
+                next;
+            }
+        }
+        $lists->{$r}->{'lists'}->{$l}->{'owners'} = \@owners;
+        close $listconf;
+        say Dumper($lists->{$r}->{'lists'}->{$l}) if ($debug >= 6);
+        # on peut maintenant récupérer les infos du ldap et gérer le cas
+        my $n = get_listinfo_from_ldap($r, $l);
+        if ($n == 0) {
+            # liste inexistante, on la crée (avec les aliases)
+            # si le statut est ok
+            if ($lists->{$r}->{'lists'}->{$l}->{'status'} eq 'open') {
+                create_list_and_aliases($r, $l);
+            } else {
+                say 'Status is '.$lists->{$r}->{'lists'}->{$l}->{'status'}.
+                " for list $l ($r), so no creation!" if ($debug);
+                #mail_msg('Status is '.$lists->{$r}->{'lists'}->{$l}->{'status'}.
+                #    " for list $l ($r), so no creation!");
+            }
+        } elsif ($n == 1) {
+            # liste existante, à modifier ?
+            test_modify_list_or_aliases($r, $l);
+        } elsif ($n == 2) {
+            # plusieurs listes avec ce cn -> erreur
+            say "Too much cn for list $l (robot $r)!" if ($debug);
+            mail_msg("Too much cn for list $l (robot $r)!");
+            return 1; 
+        } else {
+            # problèm de connexion au LDAP
+            say "Error encountered while connecting to LDAP" if ($debug);
+            mail_msg("Error encountered while connecting to LDAP");
+            return 2;
+        }
+    }
+    return 0;
 }
 
 __END__
