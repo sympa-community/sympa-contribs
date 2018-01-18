@@ -15,7 +15,7 @@ To run this on your sympa server:
 * put `sympatoldap.conf` in `/usr/local/etc/` (or any other directory you choose)
 * edit `sympatoldap.pl` and change the line :
 
-      my $confile = "/usr/local/etc/sympatoldap.conf";                                                                                       
+      my $confile = "/usr/local/etc/sympatoldap.conf";
   with the path to where you put `sympatoldap.conf`
 * edit `sympatoldap.conf` to adapt to your settings
 * pick either `sympatoldap.sysv` or `sympatoldap.service` and copy where
