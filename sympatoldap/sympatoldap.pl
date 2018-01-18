@@ -19,10 +19,11 @@
 #===============================================================================
 
 use strict;
-use warnings;
+#use warnings;
 use utf8;
 use feature qw(say);
 use open ":encoding(utf8)";
+use sigtrap qw/handler signal_handler normal-signals/;
 use Encode;
 use Data::Dumper;
 use DateTime;
@@ -34,8 +35,7 @@ use Fcntl ':flock';
 ##########################################
 ### Chemin du fichier de configuration ###
 ##########################################
-#my $confile = "/appli/sympa/sympaV6.2.12/sympa/conf/contribsympa.conf";
-my $confile = "sympatoldap.conf";
+my $confile = "/usr/local/etc/sympatoldap.conf";
 
 #################################
 ### Autres variables globales ###
@@ -109,7 +109,7 @@ if (not $debug) {
     $( = $) = (getgrnam($conf->{'sympa.group'}))[2];
     $< = $> = (getpwnam($conf->{'sympa.user'}))[2];
     # récupère la demande d'interruption pour arrêter proprement
-    $SIG{'TERM'} = 'sigterm';
+    $SIG{TERM} = \&signal_handler;
 }
 
 ###########################
@@ -141,7 +141,7 @@ while (not $end) {
         sleep($scanInt);
         push(@modiflists, `$getlistnewerthanflag`);
         say "@modiflists" if ($debug >= 2);
-        if ((time() - $lastcheck) > $scanInt) {
+        if ((time() - $lastcheck) > $conf->{'scan.normal'}) {
             $recheck = 1;
         }
         say "ScanInt: $scanInt - Recheck: $recheck" if ($debug >= 6);
@@ -186,6 +186,7 @@ while (not $end) {
             # on touche le flagfile
             system("touch ".$conf->{'main.flagfile'});
             $scanInt = $conf->{'scan.default'};
+            @modiflists = ();
         }
     }
 }
@@ -199,6 +200,10 @@ exit(0);
 ##################
 ### Procédures ###
 ##################
+sub signal_handler {
+    die "Caught a signal $!";
+}
+
 sub test_err {
     # sortie en retournant le code d'erreur
     my $e = shift;
@@ -370,7 +375,7 @@ sub check_lists_from_ldap {
                 # la liste existe dans sympa, on vérifie subject et owners
                 say Dumper($lists->{$r}->{'lists'}->{$l}) if ($debug >= 6);
                 # nok si subject ne matche pas description
-                if (defined $lists->{$r}->{'lists'}->{$l}->{'subject'}
+                if (defined $li->get_value('description')
                         and $lists->{$r}->{'lists'}->{$l}->{'subject'} ne $li->get_value('description')) {
                     say "Difference found for $l description ($r) between LDAP and \$lists!" if ($debug);
                     mail_msg("Difference found for $l description ($r) between LDAP and \$lists!");
@@ -507,7 +512,6 @@ sub get_listinfo_from_ldap {
 sub create_list_and_aliases {
     my ($r, $l) = @_;
     my $result;
-    say "Create list $l and its aliases ($r) in LDAP" if ($debug);
     mail_msg("Create list $l and its aliases ($r) in LDAP");
     # création liste principale dans 'lists.public'
     my $ldap = Net::LDAP->new($conf->{'ldap.host'}, port => $conf->{'ldap.port'});
@@ -701,6 +705,7 @@ sub lists_modification {
     mail_msg("Lists modification: \n".join("\n", @lists));
     # Pour chaque liste plus récente que le flag
     foreach my $cf (@lists) {
+        chomp($cf);
         # on éclate le chemin pour avoir le robot et la liste
         my $r = $cf;
         $r =~ s#^$conf->{'sympa.expl'}/([^\/]+)/([^\/]+)/config$#$1#;
