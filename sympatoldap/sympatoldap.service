@@ -1,0 +1,14 @@
+[Unit]
+Description=Sympa to LDAP aliases
+Wants=sympa.service
+
+[Service]
+Type=forking
+PIDFile=/var/run/sympatoldap.pid
+User=sympa
+Group=sympa
+ExecStart=/usr/local/sbin/sympatoldap.pl
+
+[Install]
+WantedBy=multi-user.target
+
