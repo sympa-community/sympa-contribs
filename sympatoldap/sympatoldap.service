@@ -1,0 +1,16 @@
+[Unit]
+Description=Sympa to LDAP aliases
+Wants=sympa.service
+
+[Service]
+Type=simple
+PIDFile=/run/sympatoldap.pid
+User=sympa
+Group=sympa
+ExecStart=/usr/local/sbin/sympatoldap.pl
+KillMode=process
+KillSignal=SIGKILL
+
+[Install]
+WantedBy=multi-user.target
+
