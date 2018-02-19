@@ -1,0 +1,1055 @@
+#!/usr/bin/php
+<?php
+
+// Parse options
+$options = getopt('hvqc:i:al:d:', array('db-dsn:', 'db-user:', 'db-password:'));
+
+// Help
+if(array_key_exists('h', $options) || !count($options)) {
+	$self = basename($argv[0]);
+	echo "Sympa datasource tester\n";
+	echo "Usage : ${self} [-h] [-v] [-q] [-c list_config_file_path] [-i source_index|-a] [-d lists_dir] [-l list_name] [-r robots_conf] [(advanced options)]\n";
+	
+	echo "\t-h : this help\n";
+	
+	echo "\t-v : verbose mode, outputs all found data\n";
+	echo "\t-q : quiet mode, outputs nothing, only set return code depending on success of operation\n";
+	
+	echo "\t-c : list config file path, set to - if config given through stdin (in this case you might want to also give -l and -d)\n";
+	echo "\t-i : index of datasource to test (given in datasources list), will list all datasources without it\n";
+	echo "\t-a : test all datasources\n";
+	
+	echo "\t-d : sympa lists directory, not needed if list config file under it given through -c\n";
+	echo "\t-l : list name (full, like list@domain), not needed if list config file given through -c\n";
+	echo "\t-r : robots config path (defaults to ../etc/ relative to -d, only needed if testing remote symap list inclusion using robot certificate\n";
+	
+	echo "\n\tAdvanced options\n";
+	
+	echo "\t--db-dsn : Sympa database DSN, only used when testing local list inclusion\n";
+	echo "\t--db-user : Sympa database user, only used when testing local list inclusion\n";
+	echo "\t--db-password : Sympa database password, only used when testing local list inclusion\n";
+	
+	echo "\n\tRequirements (depending on used datasources types)\n";
+	echo "\tphp-pdo and related drivers\n";
+	echo "\tphp-curl\n";
+	
+	exit;
+}
+
+/**
+ * Handles text output
+ */
+class Out {
+	/** @var int **/
+	private static $indent = 0;
+	
+	/** @var bool **/
+	private static $verbose = false;
+	
+	/** @var bool **/
+	private static $quiet = false;
+	
+	/**
+	 * Increment/decrement indentation
+	 * 
+	 * @param int $n
+	 * @param bool $absolute
+	 * 
+	 * @return int previous value
+	 */
+	public static function indent($n, $absolute = true) {
+		$indent = self::$indent;
+		if($n) self::$indent = max(0, $absolute ? $n : self::$indent + $n);
+		return $indent;
+	}
+	
+	/**
+	 * Set mode
+	 * 
+	 * @param bool $verbose
+	 * @param bool $quiet
+	 */
+	public static function setMode($verbose, $quiet) {
+		if($verbose && $quiet)
+			throw new Exception('Verbose and quiet cannot be used at the same time');
+		
+		self::$verbose = (bool)$verbose;
+		self::$quiet = (bool)$quiet;
+	}
+	
+	/**
+	 * Get wether quiet
+	 * 
+	 * @return bool
+	 */
+	public static function isQuiet() {
+		return self::$quiet;
+	}
+	
+	/**
+	 * Echoes something
+	 * 
+	 * @param string $msg
+	 * @param int $indent
+	 * @param int $new_lines
+	 */
+	public static function say($msg, $indent = null, $new_lines = 1) {
+		if(is_null($indent)) $indent = self::$indent;
+		
+		if(!self::$quiet)
+			echo str_repeat("\t", $indent).$msg.str_repeat("\n", $new_lines);
+	}
+	
+	/**
+	 * Echoes something in verbose mode
+	 * 
+	 * @param string $msg
+	 * @param int $indent
+	 * @param int $new_lines
+	 */
+	public static function verbose($msg, $indent = null, $new_lines = 1) {
+		if(self::$verbose)
+			self::say($msg, $indent, $new_lines);
+	}
+}
+
+/**
+ * Handles env
+ */
+class Env {
+	/** @var array **/
+	private static $data = array();
+	
+	/**
+	 * Set env pair(s)
+	 * 
+	 * @param string|array $what
+	 * @param mixed $value
+	 */
+	public static function set($what, $value) {
+		if(!is_array($what)) $what = array($what => $value);
+		self::$data = array_merge(self::$data, $what);
+	}
+	
+	/**
+	 * Get env data
+	 * 
+	 * @param string $key
+	 * 
+	 * @return mixed|null
+	 */
+	public static function get($key) {
+		return array_key_exists($key, self::$data) ? self::$data[$key] : null;
+	}
+}
+
+/** LDAP client */
+class LDAPClient {
+	/** @var resource */
+	private $ldap = null;
+	
+	/**
+	 * Constructor
+	 * 
+	 * @param string $host
+	 * @param int|null $port
+	 * @param string user
+	 * @param string password
+	 */
+	public function __construct($host, $port = null, $user = '', $password = '') {
+		if(is_null($port)) $port = 389;
+		
+		$this->ldap = ldap_connect($host, $port);
+		if(!$this->ldap) throw new Exception('Could not prepare LDAP client');
+		
+		if($user)
+			if(!ldap_bind($this->ldap, $user, $password ? $password : null))
+				throw new Exception('Could not bind LDAP user : '.ldap_error($this->ldap));
+	}
+	
+	/**
+	 * Search LDAP
+	 * 
+	 * @param string $suffix
+	 * @param string $filter
+	 * @param array $attrs pairs of attribute name and mandatory boolean
+	 * @param bool $as_scalar get scalar attributes values (last one if multiple found)
+	 * 
+	 * @return array
+	 */
+	public function search($suffix, $filter, $attrs, $as_scalar = true) {
+		$search = ldap_search($this->ldap, $suffix, $filter, array_keys($attrs));
+		if(!$search) throw new Exception('Could not search LDAP : '.ldap_error($this->ldap));
+		
+		$entries = ldap_get_entries($this->ldap, $search);
+		if($entries === false)
+			throw new Exception('Could not get LDAP search results : '.ldap_error($this->ldap));
+		
+		$results = array();
+		foreach($entries as $k => $entry) {
+			if($k === 'count') continue;
+			
+			$result = array();
+			foreach($attrs as $attr => $mandatory) {
+				if(!in_array($attr, $entry)) {
+					if($mandatory)
+						throw new Exception('Did not get expected attribute '.$attr);
+					
+					continue;
+				}
+				
+				$value = $entry[$attr];
+				array_shift($value); // count
+				
+				$result[$attr] = $as_scalar ? array_pop($value) : $value;
+			}
+			
+			$results[] = $result;
+		}
+		
+		return $results;
+	}
+	
+	/**
+	 * Search LDAP 2 passes
+	 * 
+	 * @param string $suffix1
+	 * @param string $filter1
+	 * @param string $attrs1
+	 * @param string $suffix2
+	 * @param string $filter2
+	 * @param array $attrs2 pairs of attribute name and mandatory boolean
+	 * @param bool $as_scalar get scalar attributes values (last one if multiple found)
+	 * 
+	 * @return array
+	 */
+	public function search2passes($suffix1, $filter1, $attrs1, $suffix2, $filter2, $attrs2, $as_scalar = true) {
+		$results_1 = $this->search($suffix1, $filter1, array($attrs1 => true), false);
+		$sub_searches = $results_1[0][$attrs1];
+		
+		if(!count($sub_searches))
+			return array();
+		
+		$results = array();
+		foreach(array_unique($sub_searches) as $sub_search) {
+			$sub_search = str_replace(
+				array('\\',   '(',    '*',    ')',    '\0'),
+				array('\\5C', '\\28', '\\2A', '\\29', '\\00'),
+				$sub_search
+			);
+			$suffix = str_replace('[attrs1]', $sub_search, $suffix2);
+			$filter = str_replace('[attrs1]', $sub_search, $filter2);
+			
+			$results = array_merge($results, $this->search($suffix, $filter, $attrs2, $as_scalar));
+		}
+		
+		return $results;
+	}
+}
+
+/** SQL client */
+class SQLClient {
+	/** @var PDO */
+	private $pdo = null;
+	
+	/** @var self */
+	private static $local = null;
+	
+	/**
+	 * Setup / get local Sympa database client
+	 * 
+	 * @param string $dsn
+	 * @param string $user
+	 * @param string $password
+	 * 
+	 * @return self
+	 */
+	public static function local($dsn = null, $user = null, $password = null) {
+		if($dsn) self::$local = new self($dsn, $user, $password);
+		
+		return self::$local;
+	}
+	
+	/**
+	 * Constructor
+	 * 
+	 * @param string $type
+	 * @param string $host
+	 * @param string $dbname
+	 * @param string $port
+	 * @param string $user
+	 * @param string $password
+	 */
+	public function __construct($type, $dbname, $host = null, $port = null, $user = '', $password = '') {
+		if(strpos($type, ':')) { // Shortcut
+			$dsn = $type;
+			$user = $dbname;
+			$password = $host;
+			
+		} else {
+			$dsn = array($type.':dbname='.$dbname);
+			if($host) $dsn[] = 'host='.$host;
+			if($port) $dsn[] = 'port='.$port;
+			$dsn = implode(';', $dsn);
+		}
+		
+		$this->pdo = new PDO($dsn, $user, $password);
+		$this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+	}
+	
+	/**
+	 * Query for data
+	 * 
+	 * @param string $sql
+	 * @param bool $assoc
+	 * @param array $placeholders
+	 * 
+	 * @return array
+	 */
+	public function query($sql, $assoc = false, $placeholders = array()) {
+		$statement = $this->pdo->prepare($sql);
+		$statement->execute($placeholders);
+		
+		$results = array();
+		while($row = $statement->fetch($assoc ? PDO::FETCH_ASSOC : PDO::FETCH_NUM))
+			$results[] = $row;
+		
+		return $results;
+	}
+}
+
+/** HTTP/HTTPS client */
+class HTTPClient {
+	/**
+	 * Make HTTP/HTTPS request
+	 * 
+	 * @param string $url
+	 * @param string $cert client certificate path for https
+	 * @param string $key client private key path for https
+	 */
+	public static function query($url, $cert = null, $key = null) {
+		$curl = curl_init();
+		
+		curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, FALSE);
+		curl_setopt($curl, CURLOPT_HEADER, false);
+		curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
+		curl_setopt($curl, CURLOPT_URL, $url);
+		curl_setopt($curl, CURLOPT_REFERER, $url);
+		curl_setopt($curl, CURLOPT_RETURNTRANSFER, TRUE);
+		
+		if($cert)
+			curl_setopt($curl, CURLOPT_SSLCERT, $cert);
+		
+		if($key)
+			curl_setopt($curl, CURLOPT_SSLKEY, $key);
+		
+		$error = curl_error($curl);
+		$result = curl_exec($curl);
+		curl_close($curl);
+		
+		if($error)
+			throw new Exception('HTTP/HTTPS client error : '.$error);
+		
+		return $result;
+	}
+}
+
+/** DataSource */
+abstract class DataSource {
+	/** @var array **/
+	private $params = array();
+	
+	/**
+	 * Get real datasource from its type
+	 * 
+	 * @param string $type
+	 * @param array|string $params
+	 * 
+	 * @return self|null
+	 */
+	public static function getFromType($type, $params) {
+		$class = implode('', array_map('ucfirst', explode('_', $type))).'DataSource';
+		if(!class_exists($class)) return null;
+		
+		return new $class($params);
+	}
+	
+	/**
+	 * Parse config for datasources
+	 * 
+	 * @param string $config
+	 * 
+	 * @return self[]
+	 */
+	public static function parse($config) {
+		$config = explode("\n", $config);
+		$datasources = array();
+
+		while(!is_null($line = array_shift($config))) {
+			if(!$line) continue;
+			$bits = preg_split('`\s+`', $line, 2);
+			$type = array_shift($bits);
+			
+			if(!in_array($type, array(
+				'member_include', 'include_file', 'include_remote_file', 'include_list', 'include_sympa_list',
+				'include_remote_sympa_list', 'include_ldap_query', 'include_ldap_2level_query',
+				'include_sql_query', 'include_voot_group', 'include_ldap_ca', 'include_ldap_2level_ca',
+				'include_sql_ca'
+			))) continue;
+			
+			$params = array();
+			if(count($bits))
+				$params['arg'] = array_shift($bits);
+			
+			while($line = array_shift($config)) {
+				$bits = preg_split('`\s+`', $line, 2);
+				
+				$params[array_shift($bits)] = array_shift($bits);
+			}
+			
+			$datasources[] = self::getFromType($type, $params);
+		}
+		
+		return $datasources;
+	}
+	
+	/**
+	 * Constructor
+	 * 
+	 * @param array|string $params
+	 */
+	public function __construct($params) {
+		$this->params = is_array($params) ? $params : array('arg' => $params);
+	}
+	
+	/** Describe self **/
+	abstract public function describe();
+	
+	/** Test self **/
+	abstract public function results();
+	
+	/**
+	 * Getter
+	 * 
+	 * @param string $property
+	 * 
+	 * @return mixed|null
+	 */
+	public function __get($property) {
+		return array_key_exists($property, $this->params) ? $this->params[$property] : null;
+	}
+}
+
+/** Subscribers datasource **/
+abstract class SubscribersDataSource extends DataSource {
+	/** Test self **/
+	public function results() {
+		$subscribers = $this->run();
+		if(is_null($subscribers)) return;
+		
+		Out::say('Found '.count($subscribers).' subscribers');
+		
+		Out::verbose('');
+		uksort($subscribers, 'strcasecmp');
+		foreach($subscribers as $email => $gecos)
+			Out::verbose($email.($gecos ? ' ('.$gecos.')' : ''));
+			
+		Out::verbose('');
+	}
+	
+	/**
+	 * Run
+	 * 
+	 * @return array|null
+	 */
+	abstract protected function run();
+}
+
+/** Plain subscribers datasource **/
+abstract class PlainSubscribersDataSource extends SubscribersDataSource {
+	/**
+	 * Run
+	 * 
+	 * @return array
+	 */
+	protected function run() {
+		$data = array_filter(explode("\n", $this->fetch()));
+		$subscribers = array();
+		foreach($data as $line) {
+			$bits = preg_split('`\s+`', $line, 2);
+			$email = array_shift($bits);
+			if(!filter_var($email, FILTER_VALIDATE_EMAIL))
+				throw new Exception("Did not get an email : ${email}\n");
+			
+			$subscribers[$email] = array_shift($bits);
+		}
+		
+		return $subscribers;
+	}
+	
+	/**
+	 * Fetch plain data
+	 * 
+	 * @return string
+	 */
+	abstract protected function fetch();
+}
+
+/** Local list subscribers datasource **/
+abstract class LocalListSubscribersDataSource extends SubscribersDataSource {
+	/**
+	 * Run
+	 * 
+	 * @return array
+	 */
+	protected function run() {
+		$list = $this->listname();
+		$domain = Env::get('domain');
+		
+		if(strpos($list, '@'))
+			list($list, $domain) = explode('@', $list);
+		
+		if(!$domain)
+			throw new Exception('List has no domain and no current domain');
+		
+		$list_path = Env::get('lists_dir').'/'.$domain.'/'.$list;
+		
+		if(!is_dir($list_path))
+			throw new Exception('List path not found : '.$list_path);
+		
+		if($local = SQLClient::local()) {
+			$subscribers = array();
+			$q = 'SELECT user_subscriber, comment_subscriber FROM subscriber_table WHERE list_subscriber=:list AND robot_subscriber = :domain';
+			foreach($local->query($q, true, array(':list' => $list, 'domain' => $domain)) as $sub)
+				$subscribers[$sub['user_subscriber']] = $sub['comment_subscriber'];
+			
+			Out::verbose('Local SQL subscribers fetch does not honor filters');
+			return $subscribers;
+			
+		} else {
+			Out::say('Local database access not enabled, cannot fetch subscribers');
+		}
+		
+		return null;
+	}
+	
+	/**
+	 * Get list name
+	 * 
+	 * @return string
+	 */
+	abstract protected function listname();
+}
+
+/** Custom attributes datasource **/
+abstract class CADataSource extends DataSource {
+	/** Test self **/
+	public function results() {
+		$ca = $this->run();
+		
+		Out::say('Found custom attributes for '.count($ca).' subscribers');
+		
+		Out::verbose('');
+		uksort($ca, 'strcasecmp');
+		foreach($ca as $email => $attrs) {
+			Out::verbose($email);
+			Out::indent(1);
+			uksort($attrs, 'strcasecmp');
+			foreach($attrs as $k => $v)
+				Out::verbose($k.': '.$v);
+			
+			Out::verbose('');
+			Out::indent(-1);
+		}
+			
+		Out::verbose('');
+	}
+	
+	/**
+	 * Run
+	 * 
+	 * @return array
+	 */
+	protected function run() {
+		$ca = array();
+		foreach($this->fetch() as $result) {
+			if(!array_key_exists($this->email_entry, $result))
+				continue;
+			
+			$email = $result[$this->email_entry];
+			if(!filter_var($email, FILTER_VALIDATE_EMAIL))
+				throw new Exception('Did not get an email : '.$email);
+			
+			unset($result[$this->email_entry]);
+			$ca[$email] = $result;
+		}
+		
+		return $ca;
+	}
+	
+	/**
+	 * Fetch
+	 * 
+	 * @return array
+	 */
+	abstract protected function fetch();
+}
+
+/** include_file **/
+class IncludeFileDataSource extends PlainSubscribersDataSource {
+	/** Describe self **/
+	public function describe() {
+		Out::say('Local file inclusion');
+		Out::say('Path: '.$this->arg);
+	}
+	
+	/**
+	 * Fetch
+	 * 
+	 * @return string
+	 */
+	protected function fetch() {
+		if(!is_file($this->arg))
+			throw new Exception('File not found : '.$this->arg);
+		
+		if(!is_readable($this->arg))
+			throw new Exception('File not readable : '.$this->arg);
+		
+		return file_get_contents($this->arg);
+	}
+}
+
+/** include_remote_file **/
+class IncludeRemoteFileDataSource extends PlainSubscribersDataSource {
+	/** Describe self **/
+	public function describe() {
+		Out::say('Remote file inclusion');
+		Out::say('Url: '.$this->url);
+	}
+	
+	/**
+	 * Fetch
+	 * 
+	 * @return string
+	 */
+	protected function fetch() {
+		$data = HTTPClient::query($this->url);
+		if($data === false)
+			throw new Exception('File download failed : '.$this->url);
+		
+		return $data;
+	}
+}
+
+/** include_list **/
+class IncludeListDataSource extends LocalListSubscribersDataSource {
+	/** Describe self **/
+	public function describe() {
+		Out::say('Local list inclusion (old style)');
+		$parts = preg_split('`\s+`', $this->arg, 2);
+		Out::say('Name: '.$parts[0]);
+		if(count($parts) > 1)
+			Out::say('Filter: '.$parts[2]);
+	}
+	
+	/**
+	 * Get list name
+	 * 
+	 * @return string
+	 */
+	protected function listname() {
+		$parts = preg_split('`\s+`', $this->arg);
+		return array_shift($parts);
+	}
+}
+
+/** include_sympa_list **/
+class IncludeSympaListDataSource extends LocalListSubscribersDataSource {
+	/** Describe self **/
+	public function describe() {
+		Out::say('Local list inclusion');
+		Out::say('Name: '.$this->listname);
+		if($this->filter)
+			Out::say('Filter: '.$this->filter);
+	}
+	
+	/**
+	 * Get list name
+	 * 
+	 * @return string
+	 */
+	protected function listname() {
+		return $this->listname;
+	}
+}
+
+/** include_remote_sympa_list **/
+class IncludeRemoteSympaListDataSource extends PlainSubscribersDataSource {
+	/** Describe self **/
+	public function describe() {
+		Out::say('Remote list inclusion');
+		$where = $this->host;
+		if($this->port)
+			$where .= ':'.$this->port;
+		$where .= $this->path;
+		Out::say('Location: '.$where);
+	}
+	
+	/**
+	 * Fetch
+	 * 
+	 * @return string
+	 */
+	public function fetch() {
+		$url = 'https://'.$this->remote_host.':'.($this->port ? $this->port : 443).$this->path;
+		
+		$dir = Env::get('lists_dir').'/'.Env::get('domain').'/'.Env::get('list');
+		if($this->cert === 'robot') {
+			$robots_dir = Env::get('robots_dir');
+			if(!$robots_dir)
+				throw new Exception('Need to use robot certificate but no robot config path');
+			
+			$dir = $robots_dir.'/'.Env::get('domain');
+		}
+		
+		$cert = $dir.'/cert.pem';
+		$key = $dir.'/private_key';
+		
+		if(!file_exists($cert))
+			throw new Exception('Certificate not found : '.$cert);
+		
+		if(!file_exists($key))
+			throw new Exception('Private key not found : '.$key);
+		
+		$context = stream_context_create(array(
+			'http' => array(
+				'header'  => "Authorization: Basic ".base64_encode($this->user.':'.$this->passwd)
+			)
+		));
+		
+		$data = HTTPClient::query($url, $cert, $key);
+		if($data === false)
+			throw new Exception('File download failed : '.$this->url);
+		
+		return $data;
+	}
+}
+
+/** include_ldap_query **/
+class IncludeLdapQueryDataSource extends SubscribersDataSource {
+	/** Describe self **/
+	public function describe() {
+		Out::say('LDAP query');
+		Out::say('Host: '.$this->host);
+		Out::say('Suffix: '.$this->suffix);
+		Out::say('Filter: '.$this->filter);
+		Out::say('Attribute: '.$this->attrs);
+	}
+	
+	/**
+	 * Run
+	 * 
+	 * @return array
+	 */
+	public function run() {
+		$ldap = new LDAPClient($this->host, $this->port, $this->user, $this->passwd);
+		
+		$attrs = array();
+		$attrs_k = explode(',', $this->attrs);
+		$attrs[$attrs_k[0]] = true; // email
+		if(count($attrs_k) > 1) $attrs[$attrs_k[1]] = false; // gecos
+		
+		$results = $ldap->search($this->suffix, $this->filter, $attrs);
+		
+		$subscribers = array();
+		foreach($results as $result) {
+			$email = $result[$attrs_k[0]];
+			if(!filter_var($email, FILTER_VALIDATE_EMAIL))
+				throw new Exception('Did not get an email : '.$email);
+			
+			$gecos = (count($attrs_k) > 1) ? $result[$attrs_k[1]] : null;
+			
+			$subscribers[$email] = $gecos;
+		}
+		
+		return $subscribers;
+	}
+}
+
+/** include_ldap_2level_query **/
+class IncludeLdap2levelQueryDataSource extends SubscribersDataSource {
+	/** Describe self **/
+	public function describe() {
+		Out::say('2 levels LDAP query');
+		Out::say('Host: '.$this->host);
+		Out::say('Level 1 suffix: '.$this->suffix1);
+		Out::say('Level 1 filter: '.$this->filter1);
+		Out::say('Level 1 attributes: '.$this->attrs1);
+		Out::say('Level 2 suffix: '.$this->suffix2);
+		Out::say('Level 2 filter: '.$this->filter2);
+		Out::say('Level 2 attributes: '.$this->attrs2);
+	}
+	
+	/**
+	 * Run
+	 * 
+	 * @return array
+	 */
+	public function run() {
+		$ldap = new LDAPClient($this->host, $this->port, $this->user, $this->passwd);
+		
+		$attrs2 = array();
+		$attrs_k = explode(',', $this->attrs2);
+		$attrs2[$attrs_k[0]] = true; // email
+		if(count($attrs_k) > 1) $attrs2[$attrs_k[1]] = false; // gecos
+		
+		$results = $ldap->search2passes(
+			$this->suffix1, $this->filter1, $this->attrs1,
+			$this->suffix2, $this->filter2, $attrs2
+		);
+		
+		$subscribers = array();
+		foreach($results as $result) {
+			$email = $result[$attrs_k[0]];
+			if(!filter_var($email, FILTER_VALIDATE_EMAIL))
+				throw new Exception('Did not get an email : '.$email);
+			
+			$gecos = (count($attrs_k) > 1) ? $result[$attrs_k[0]] : null;
+			
+			$subscribers[$email] = $gecos;
+		}
+		
+		return $subscribers;
+	}
+}
+
+/** include_sql_query **/
+class IncludeSqlQueryDataSource extends SubscribersDataSource {
+	/** Describe self **/
+	public function describe() {
+		Out::say('SQL query');
+		Out::say('Type: '.$this->db_type);
+		Out::say('Host: '.$this->host);
+		Out::say('Database: '.$this->db_name);
+		Out::say('Query: '.$this->sql_query);
+	}
+	
+	/**
+	 * Run
+	 * 
+	 * @return array
+	 */
+	public function run() {
+		$client = new SQLClient($this->db_type, $this->db_name, $this->host, $this->port, $this->user, $this->passwd);
+		
+		$subscribers = array();
+		foreach($client->query($this->sql_query, false) as $result) {
+			$email = array_shift($result);
+			if(!filter_var($email, FILTER_VALIDATE_EMAIL))
+				throw new Exception('Didn\'t get an email in first column of results : '.$email);
+			
+			$subscribers[$email] = array_shift($result);
+		}
+		
+		return $subscribers;
+	}
+}
+
+/** include_ldap_ca **/
+class IncludeLdapCaDataSource extends CADataSource {
+	/** Describe self **/
+	public function describe() {
+		Out::say('LDAP custom attributes query');
+		Out::say('Host: '.$this->host);
+		Out::say('Suffix: '.$this->suffix);
+		Out::say('Filter: '.$this->filter);
+		Out::say('Attribute: '.$this->attrs);
+		Out::say('Email entry: '.$this->email_entry);
+	}
+	
+	/**
+	 * Fetch
+	 * 
+	 * @return array
+	 */
+	public function fetch() {
+		$ldap = new LDAPClient($this->host, $this->port, $this->user, $this->passwd);
+		
+		$attrs = array_fill_keys(explode(',', $this->attrs), true);
+		if(!array_key_exists($this->email_entry, $attrs)) $attrs[$this->email_entry] = false;
+		return $ldap->search($this->suffix, $this->filter, $attrs);
+	}
+}
+
+/** include_ldap_2level_ca **/
+class IncludeLdap2levelCaDataSource extends CADataSource {
+	/** Describe self **/
+	public function describe() {
+		Out::say('2 levels LDAP custom attributes query');
+		Out::say('Level 1 suffix: '.$this->suffix1);
+		Out::say('Level 1 filter: '.$this->filter1);
+		Out::say('Level 1 attributes: '.$this->attrs1);
+		Out::say('Level 2 suffix: '.$this->suffix2);
+		Out::say('Level 2 filter: '.$this->filter2);
+		Out::say('Level 2 attributes: '.$this->attrs2);
+		Out::say('Email entry: '.$this->email_entry);
+	}
+	
+	/**
+	 * Fetch
+	 * 
+	 * @return array
+	 */
+	public function fetch() {
+		$ldap = new LDAPClient($this->host, $this->port, $this->user, $this->passwd);
+		
+		$attrs2 = array_fill_keys(explode(',', $this->attrs), true);
+		if(!array_key_exists($this->email_entry, $attrs2)) $attrs2[$this->email_entry] = false;
+
+		return $ldap->search2passes(
+			$this->suffix1, $this->filter1, $this->attrs1,
+			$this->suffix2, $this->filter2, $attrs2
+		);
+	}
+}
+		
+/** include_sql_ca **/
+class IncludeSqlCaDataSource extends CADataSource {
+	/** Describe self **/
+	public function describe() {
+		Out::say('SQL custom attributes query');
+		Out::say('Type: '.$this->db_type);
+		Out::say('Host: '.$this->host);
+		Out::say('Database: '.$this->db_name);
+		Out::say('Query: '.$this->sql_query);
+		Out::say('Email entry: '.$this->email_entry);
+	}
+	
+	/**
+	 * Fetch
+	 * 
+	 * @return array
+	 */
+	public function fetch() {
+		$client = new SQLClient($this->db_type, $this->db_name, $this->host, $this->port, $this->user, $this->passwd);
+		
+		return $client->query($this->sql_query, true);
+	}
+}
+
+try {
+	// Output utils
+	Out::setMode(array_key_exists('v', $options), array_key_exists('q', $options));
+	
+	// Local database access
+	if(array_key_exists('db-dsn', $options)) {
+		SQLClient::local(
+			$options['db-dsn'],
+			array_key_exists('db-user', $options) ? $options['db-user'] : '',
+			array_key_exists('db-password', $options) ? $options['db-password'] : ''
+		);
+	}
+
+	// Better run as sympa user, some tests may not be accurate otherwise
+	if(exec('id -un') != 'sympa')
+		Out::say('Not running as sympa, tests maybe be biased ...');
+
+	// Get env from given args
+	$list = null;
+	$domain = null;
+	$lists_dir = null;
+	$robots_dir = null;
+	$list_config = array_key_exists('c', $options) ? trim($options['c']) : null;
+	if(!$list_config)
+		throw new Exception('Missing list config path');
+
+	if($list_config === '-') {
+		$list_config = 'php://stdin';
+		
+	} else if($list_config) {
+		if(substr($list_config, 0, 1) !== '/')
+			$list_config = getcwd().'/'.$list_config;
+		
+		if(!preg_match('`/config$`', $list_config))
+			$list_config .= '/config';
+		
+		$list_config = realpath($list_config);
+		
+		if(!is_file($list_config) || !is_readable($list_config))
+			fail('List config not found or not readable : '.$list_config);
+
+		$path = explode('/', $list_config);
+		array_pop($path); // Config file
+		$list = array_pop($path);
+		$domain = array_pop($path);
+		$lists_dir = implode('/', $path);
+		array_pop($path);
+		$robots_dir = implode('/', $path).'/etc';
+		if(!is_dir($robots_dir)) $robots_dir = null;
+	}
+
+	if(array_key_exists('l', $options))
+		list($list, $domain) = explode('@', trim($options['l']));
+
+	if(array_key_exists('d', $options))
+		$lists_dir = trim($options['d']);
+
+	if(array_key_exists('r', $options))
+		$robots_dir = trim($options['r']);
+
+	if(!$lists_dir || !is_dir($lists_dir))
+		throw new Exception('Not a directory path or not readable : '.$lists_dir);
+
+	if($robots_dir && !is_dir($robots_dir))
+		throw new Exception('Not a directory path or not readable : '.$robots_dir);
+
+	Env::set('robots_dir', $robots_dir);
+	Env::set('lists_dir', $lists_dir);
+	Env::set('domain', $domain);
+	Env::set('list', $list);
+
+	// Parse datasources from config
+	$datasources = DataSource::parse(file_get_contents($list_config));
+	
+	$test = array();
+	if(array_key_exists('i', $options) && strlen($options['i'])) {
+		if(!preg_match('`^(0|[1-9][0-9]*)$`', $options['i']))
+			throw new Exception('Bad datasource index');
+		
+		$idx = (int)$options['i'];
+		
+		if($idx < 0 || $idx >= count($datasources))
+			throw new Exception('Datasource index out of bounds');
+		
+		$test = array($idx);
+	}
+	
+	if(array_key_exists('a', $options))
+		$test = array_keys($datasources);
+	
+	if(count($test)) {
+		sort($test);
+		foreach($test as $idx) {
+			$datasource = $datasources[$idx];
+			
+			$datasource->describe();
+			
+			Out::say('');
+			
+			$datasource->results();
+		}
+		
+		exit;
+	}
+		
+	foreach($datasources as $idx => $datasource) {
+		Out::say('Datasource index: '.$idx);
+		Out::indent(1);
+		$datasource->describe();
+		Out::indent(0);
+	}
+	
+} catch(Exception $e) {
+	if(!Out::isQuiet()) error_log($e->getMessage());
+	die();
+}
