@@ -5,5 +5,7 @@ useful to others anyway.
 
 Create a directory for your contrib and please provide a README.md at the root
 of your contribution to help people understanding what it does and how to use
-it.
+it You can also update this README by giving a brief description of your contribution and putting a direct link to your readme file.
 
+# Current contributions
+ * [sympatoldap](sympatoldap/README.md): Creates LDAP entries for every list (and its aliases) whose status is open on the LDAP server.
