@@ -9,3 +9,4 @@ it You can also update this README by giving a brief description of your contrib
 
 # Current contributions
  * [sympatoldap](sympatoldap/README.md): Creates LDAP entries for every list (and its aliases) whose status is open on the LDAP server.
+ * [splitting_daemons_logs](splitting_daemons_logs/README.md): Split Sympa processus logs into separated files.

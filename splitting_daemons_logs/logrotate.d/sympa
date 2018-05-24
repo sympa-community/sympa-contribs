@@ -1,0 +1,13 @@
+/var/log/sympa/*log
+{
+        rotate 8
+        dateext
+        weekly
+        missingok
+        notifempty
+        compress
+        sharedscripts
+        postrotate
+                invoke-rc.d rsyslog rotate > /dev/null
+        endscript
+}
