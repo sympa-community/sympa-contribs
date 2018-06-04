@@ -8,5 +8,8 @@ of your contribution to help people understanding what it does and how to use
 it You can also update this README by giving a brief description of your contribution and putting a direct link to your readme file.
 
 # Current contributions
- * [sympatoldap](sympatoldap/README.md): Creates LDAP entries for every list (and its aliases) whose status is open on the LDAP server.
- * [splitting_daemons_logs](splitting_daemons_logs/README.md): Split Sympa processus logs into separated files.
+
+* [sympatoldap](sympatoldap/README.md): Creates LDAP entries for every list (and its aliases) whose status is open on the LDAP server.
+* [splitting_daemons_logs](splitting_daemons_logs/README.md): Split Sympa processus logs into separated files.
+* [sqlite2mysql](sqlite2mysql/README.md): Attempt to convert sqlite to mysql
+
