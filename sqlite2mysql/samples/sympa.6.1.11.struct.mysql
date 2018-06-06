@@ -1,0 +1,177 @@
+## MySQL Database creation script
+
+#CREATE DATABASE sympa DEFAULT CHARSET=utf8;
+
+## Connect to DB 
+\r sympa
+
+CREATE TABLE user_table (
+  email_user            varchar (100) NOT NULL,
+  gecos_user            varchar (150),
+  password_user    varchar (40),
+  last_login_date_user  int(11),
+  last_login_host_user  varchar(60),
+  wrong_login_count_user  int(11),
+  cookie_delay_user  int,
+  lang_user    varchar (10),
+  attributes_user    text,
+  data_user    text,
+  PRIMARY KEY (email_user)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+CREATE TABLE subscriber_table (
+  list_subscriber         varchar (50) NOT NULL,
+  user_subscriber    varchar (100) NOT NULL,
+  custom_attribute_subscriber  text,
+  robot_subscriber  varchar (80) NOT NULL,
+  date_subscriber    datetime NOT NULL,
+  update_subscriber  datetime,
+  visibility_subscriber  varchar (20),
+  reception_subscriber  varchar (20),
+  topics_subscriber  varchar (200),
+  bounce_subscriber  varchar (35),
+  bounce_score_subscriber smallint (6),
+  bounce_address_subscriber  varchar (100),
+  comment_subscriber  varchar (150),
+  subscribed_subscriber   int(1),
+  included_subscriber   int(1),
+  include_sources_subscriber varchar(50),
+  suspend_subscriber  int(1),
+  suspend_start_date_subscriber  int(11),
+  suspend_end_date_subscriber  int(11),
+  PRIMARY KEY (robot_subscriber, list_subscriber, user_subscriber),
+  INDEX user_index (user_subscriber)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+CREATE TABLE admin_table (
+  list_admin     varchar(50) NOT NULL,
+  user_admin     varchar(100) NOT NULL,
+  robot_admin     varchar(80) NOT NULL,
+  role_admin     enum('listmaster','owner','editor') NOT NULL,
+  date_admin     datetime NOT NULL,
+  update_admin     datetime,
+  reception_admin   varchar(20),
+  visibility_admin   varchar(20),
+  comment_admin     varchar(150),
+  subscribed_admin    int(1),
+  included_admin    int(1),
+  include_sources_admin    varchar(50),
+  info_admin       varchar(150),
+  profile_admin      enum('privileged','normal'),
+  PRIMARY KEY (robot_admin, list_admin, role_admin, user_admin),
+  INDEX user_index (user_admin)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+ 
+CREATE TABLE exclusion_table (
+  list_exclusion     varchar(50) NOT NULL,
+  user_exclusion     varchar(100) NOT NULL,
+  robot_exclusion    varchar(80) NOT NULL,
+  date_exclusion     int(11),
+  PRIMARY KEY (list_exclusion, user_exclusion),
+  INDEX user_index (user_exclusion)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+CREATE TABLE netidmap_table (
+  netid_netidmap              varchar (100) NOT NULL,
+  serviceid_netidmap      varchar (100) NOT NULL,
+  robot_netidmap              varchar (80) NOT NULL,
+  email_netidmap              varchar (100),
+  PRIMARY KEY (netid_netidmap, serviceid_netidmap, robot_netidmap)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+CREATE TABLE logs_table (
+  id_logs      bigint(20) NOT NULL,
+  date_logs    int(11) NOT NULL,
+  robot_logs    varchar(80),
+  list_logs    varchar(50),
+  action_logs    varchar(50) NOT NULL,
+  parameters_logs    varchar(100),
+  target_email_logs  varchar(100),
+  user_email_logs    varchar(100),
+  msg_id_logs    varchar(255),
+  status_logs    varchar(10) NOT NULL,
+  error_type_logs    varchar(150),
+  client_logs    varchar(100),
+  daemon_logs    varchar(10) NOT NULL,
+  PRIMARY KEY (id_logs)            
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+
+CREATE TABLE session_table (
+  id_session      varchar(30) NOT NULL,
+  start_date_session    int(11) NOT NULL,
+  date_session            int(11) NOT NULL,
+  remote_addr_session    varchar(60),
+  robot_session            varchar(80),
+  email_session            varchar(100),
+  hit_session               int(11),
+  data_session            text,
+  PRIMARY KEY (id_session)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+CREATE TABLE one_time_ticket_table (
+  ticket_one_time_ticket    varchar(30),
+  robot_one_time_ticket    varchar(80),
+  email_one_time_ticket    varchar(100),
+  date_one_time_ticket    int(11),
+  data_one_time_ticket    varchar(200),
+  remote_addr_one_time_ticket  varchar(60),
+  status_one_time_ticket    varchar(60),
+  PRIMARY KEY (ticket_one_time_ticket)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+CREATE TABLE bulkmailer_table (
+  messagekey_bulkmailer varchar(80) NOT NULL,
+  packetid_bulkmailer varchar(33) NOT NULL,
+  messageid_bulkmailer varchar(100),
+  receipients_bulkmailer text,
+  returnpath_bulkmailer varchar(100),
+  robot_bulkmailer varchar(80),
+  listname_bulkmailer varchar(50) default NULL,
+  verp_bulkmailer int(1),
+  merge_bulkmailer int(1),
+  priority_message_bulkmailer smallint(10),
+  priority_packet_bulkmailer smallint(10),
+  reception_date_bulkmailer int(11),
+  delivery_date_bulkmailer int(11),
+  lock_bulkmailer varchar(30) default NULL,
+  PRIMARY KEY (messagekey_bulkmailer,packetid_bulkmailer)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+
+CREATE TABLE `bulkspool_table` (
+  `messagekey_bulkspool` varchar(33) NOT NULL COMMENT 'An internal id of the message in order to join this table with bulkmailer_table',
+  `messageid_bulkspool` varchar(100) COMMENT 'The value of the `Message-ID` SMTP field for this message',
+  `message_bulkspool` longtext COMMENT 'The message itself as a string. The database MUST be tuned in order to accept big data blog for storing messages with attachments',
+  `lock_bulkspool` int(1) default NULL COMMENT 'lock used by parallele bulk demon ni order to prevent a message to be distribited twice',
+  `dkim_privatekey_bulkspool` varchar(100) default NULL COMMENT 'The DKIM private key value.',
+  `dkim_selector_bulkspool` varchar(50) default NULL COMMENT 'The DKIM DNS selector',
+  `dkim_i_bulkspool` varchar(100) default NULL COMMENT 'The dkim signature "i=" tag ',
+  `dkim_d_bulkspool` varchar(50) default NULL COMMENT 'The DKIM signature "d=" tag',
+  `dkim_header_list_bulkspool` varchar(500) default NULL COMMENT 'The list of header part of the signed datas',
+  PRIMARY KEY  (`messagekey_bulkspool`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+
+CREATE TABLE conf_table (
+  robot_conf varchar(80) default NULL,
+  label_conf varchar(80) default NULL,
+  value_conf varchar(300) default NULL,
+  PRIMARY KEY (robot_conf,label_conf)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+CREATE TABLE list_table (
+  creation_email_list    varchar(100) default NULL,
+  creation_epoch_list    int(11),
+  editors_list   text,
+  name_list      varchar(50) NOT NULL,
+  owners_list    text,
+  path_list      text,
+  robot_list     varchar(80) NOT NULL,
+  status_list    varchar(15) default NULL,
+  subject_list   text,
+  topics_list    varchar(255) default NULL,
+  web_archive_list       int,
+  PRIMARY KEY (name_list, robot_list)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
