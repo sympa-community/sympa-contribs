@@ -9,6 +9,8 @@ Attempts to convert a sqlite sympa DB to mysql sympa DB.
 * dump sqlite into dump.sqlite: `sqlite3 /path/to/your/sqlite3/sympa/sympa .dump > dump.sqlite`
 * convert dump: `cat dump.sqlite | perl sqlite2mysql.pl > dump.mysql`
 * push dump into mysql: `mysql -u sympa -p sympa < dump.perl`
+* for Debian users: `dpkg-reconfigure sympa`, don't forget to reconf database,
+  you can ignore errors as database already exists
 
 Working sympa structure for sympa 6.1.11~dfsg-5 on debian wheezy is in the
 sample directory.
