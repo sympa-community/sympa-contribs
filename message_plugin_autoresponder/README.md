@@ -20,7 +20,7 @@ Configuration
   2. With your list, add following setting to `config`:
      ``` code
      message_hook
-       post_archive Autoresoponder
+       post_archive Autoresponder
      ```
      Or, you may add "`Autoresponder`" to
      "Message hook / A hook on the messages just after archiving" on
