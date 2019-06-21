@@ -13,11 +13,15 @@ it You can also update this README by giving a brief description of your contrib
 
 * [message_plugin_autoresponder](plugins/message_plugin_autoresponder/README.md): A simple autoresponder applicable to Sympa's mailing lists.
 
+## Custom scenario conditions
+
+* [alreadyhaveopenedlists](custom-conditions/alreadyhaveopenedlists/README.md): checks if the sender already owns more than X opened lists
+
 ### Utils
 
 Tools for sysadmins.
 
-* [datasources_utils](datasources_utils/README.md): View list datasources and custom attributes datasources
-* [sympatoldap](sympatoldap/README.md): Creates LDAP entries for every list (and its aliases) whose status is open on the LDAP server.
-* [splitting_daemons_logs](splitting_daemons_logs/README.md): Split Sympa processus logs into separated files.
-* [sqlite2mysql](sqlite2mysql/README.md): Attempt to convert sqlite to mysql
+* [datasources_utils](utils/datasources_utils/README.md): view and test list datasources and custom attributes datasources
+* [sympatoldap](utils/sympatoldap/README.md): creates LDAP entries for every list (and its aliases) whose status is open on the LDAP server
+* [splitting_daemons_logs](utils/splitting_daemons_logs/README.md): split Sympa processus logs into separated files
+* [sqlite2mysql](utils/sqlite2mysql/README.md): attempt to convert sqlite to mysql
