@@ -9,12 +9,16 @@ it You can also update this README by giving a brief description of your contrib
 
 # Current contributions
 
+## Custom scenario conditions
+
+* [alreadyhaveopenedlists](custom-conditions/alreadyhaveopenedlists/README.md): checks if the sender already owns more than X opened lists
+
 ## Utils
 
 Tools for sysadmins.
 
-* [datasources_utils](utils/datasources_utils/README.md): View and test list datasources and custom attributes datasources
-* [sympatoldap](utils/sympatoldap/README.md): Creates LDAP entries for every list (and its aliases) whose status is open on the LDAP server.
-* [splitting_daemons_logs](utils/splitting_daemons_logs/README.md): Split Sympa processus logs into separated files.
-* [sqlite2mysql](utils/sqlite2mysql/README.md): Attempt to convert sqlite to mysql
+* [datasources_utils](utils/datasources_utils/README.md): view and test list datasources and custom attributes datasources
+* [sympatoldap](utils/sympatoldap/README.md): creates LDAP entries for every list (and its aliases) whose status is open on the LDAP server
+* [splitting_daemons_logs](utils/splitting_daemons_logs/README.md): split Sympa processus logs into separated files
+* [sqlite2mysql](utils/sqlite2mysql/README.md): attempt to convert sqlite to mysql
 
