@@ -15,26 +15,26 @@ Installation
 Configuration
 -------------
 
-  1. Prepare a mail template `mail_tt2/post_archive.autoresponder.tt2`.
+  1. Prepare a mail template `mail_tt2/pre_distribute.autoresponder.tt2`.
 
   2. With your list, add following setting to `config`:
      ``` code
      message_hook
-       post_archive Autoresponder
+       pre_distribute Autoresponder
      ```
      Or, you may add "`Autoresponder`" to
-     "Message hook / A hook on the messages just after archiving" on
+     "Message hook / A hook on the messages before distribution" on
      "Edit List Configuration" - "Sending/receiving setup" page of your list.
 
 Supported environments
 ----------------------
 
-Sympa 6.2 or later.
+Sympa 6.2 or later with Perl 5.8.1 or later.
 
 Author
 ------
 
 IKEDA Soji <ikeda@conversion.co.jp>.
 
-Copyright 2019 IKEDA Soji
+Copyright 2020 IKEDA Soji
 

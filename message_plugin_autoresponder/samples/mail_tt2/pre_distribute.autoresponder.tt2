@@ -1,0 +1,9 @@
+[%# pre_distribute.autoresponder.tt2 ~%]
+From: [% fromlist %]
+Subject: [% 'Automated reply to "%1"' | loc(subject) | qencode %]
+To: [% sender %]
+
+This is an automated reply.
+
+Your message "[% subject %]" was accepted by our mailing list service.
+
