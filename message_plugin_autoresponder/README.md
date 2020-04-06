@@ -36,5 +36,8 @@ Author
 
 IKEDA Soji <ikeda@conversion.co.jp>.
 
-Copyright 2020 IKEDA Soji
+License
+-------
+
+This software is released under the MIT License.
 
