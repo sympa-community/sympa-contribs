@@ -1,0 +1,73 @@
+#! /bin/bash
+
+# Exemple de srcipt à positionne dans une crontab quotidienne pour nettoyer la table vacation_table de SYMPA
+# Auteur : B. Marchal (Université de Lorraine)
+# Date   : décembre 2020
+
+#### Récupération de la configuration
+sympa_conf="/etc/sympa/sympa.conf"
+
+db_name=`grep "^db_name" $sympa_conf|sed -e "s/db_name.\(.*\)/\1/"`
+db_host=`grep "^db_host" $sympa_conf|sed -e "s/db_host.\(.*\)/\1/"`
+db_user=`grep "^db_user" $sympa_conf|sed -e "s/db_user.\(.*\)/\1/"`
+db_passwd=`grep "^db_passwd" $sympa_conf|sed -e "s/db_passwd.\(.*\)/\1/"`
+
+vacation='vacation_table'
+date=$( date +%s --date "7 days ago")	# Date epoch
+
+if [ -z $db_host ]; then
+    db_host='localhost'
+fi
+
+
+aide() {
+cat << EOF
+Usage: ${0##*/} [-hvc] 
+       -h          affiche cet aide
+       -v          mode verbeux, affiche les entrées à supprimer
+       -s          suppression des enregistrements
+EOF
+}
+
+
+# Analyse des options
+OPTIND=1
+suppression=0
+verbose=0
+while getopts hvs opt; do
+    case $opt in
+        h)
+            aide
+            exit 0
+            ;;
+	v)  verbose=$((verbose+1))
+            ;;
+	s)  suppression=1
+            ;;
+        *)
+            show_help >&2
+            exit 1
+            ;;
+    esac
+done
+shift "$((OPTIND-1))"   # Discard the options and sentinel --
+
+echo "########################################"
+date
+echo "########################################"
+
+if [ $verbose -ge 1 ]; then
+    echo "Entrées de la table vacation antérieures à "$(date --date="@$date")
+    mysql -h $db_host -u $db_user -p$db_passwd $db_name -Bse "SELECT * FROM $vacation WHERE date_epoch_vacation < '$date'";
+   
+fi
+
+echo "Nombre d'entrées à supprimer : " $(mysql -h $db_host -u $db_user -p$db_passwd $db_name -Bse "SELECT count(*) FROM $vacation WHERE date_epoch_vacation < '$date'")
+
+if [ $suppression -ge 1 ]; then
+    mysql -h $db_host -u $db_user -p$db_passwd $db_name -Bse "DELETE FROM $vacation WHERE date_epoch_vacation < '$date'";
+
+fi
+
+echo
+echo
