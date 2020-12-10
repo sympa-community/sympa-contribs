@@ -1,6 +1,7 @@
 #! /bin/bash
 
-# Exemple de srcipt à positionne dans une crontab quotidienne pour nettoyer la table vacation_table de SYMPA
+# Exemple de script à positionner dans une crontab quotidienne pour nettoyer la table vacation_table de SYMPA
+# (MySQL only)
 # Auteur : B. Marchal (Université de Lorraine)
 # Date   : décembre 2020
 
