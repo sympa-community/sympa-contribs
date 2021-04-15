@@ -13,9 +13,10 @@ it You can also update this README by giving a brief description of your contrib
 
 * [message_plugin_autoresponder](plugins/message_plugin_autoresponder/README.md): A simple autoresponder applicable to Sympa's mailing lists.
 
-## Custom scenario conditions
+### Custom scenario conditions
 
 * [alreadyhaveopenedlists](custom-conditions/alreadyhaveopenedlists/README.md): checks if the sender already owns more than X opened lists
+* [publisher](custom-conditions/publisher/README.md): defines users permitted to send messages to a list
 
 ### Utils
 
