@@ -1,0 +1,99 @@
+<!-- whitelist.tt2 -->
+<div class="block">
+    [% IF x_ucfname == 'Modlist' %]
+        <h2>Gestion de la modération forcée</h2><br />
+    [% ELSE %]
+        <h2>Gestion de la liste blanche</h2><br />
+    [% END %]
+
+    [% IF is_owner || is_listmaster || may_add %]
+        <div id="blacklist">
+            [% IF x_ucfname == 'Modlist' %]
+                Ceci est la configuration de la modération forcée pour la liste [% list %]@[% robot %].
+            [% ELSE %]
+                Ceci est la configuration de la liste blanche pour la liste [% list %]@[% robot %].
+            [% END %]
+            <br /><br />
+            [% IF x_name == "whitelist" %]
+                Tous les messages provenant d’utilisateurs dont le courriel correspond à un motif dans la liste blanche sont immédiatement acceptés.
+            [% ELSE %]
+                Tous les messages provenant d’utilisateurs dont le courriel correspond à un motif dans la liste de modération forcée sont mis en attente de modération.
+            [% END %]
+            La liste noire a la plus haute priorité, suivie par la liste de modération forcée puis par la liste blanche ; elles ont toute priorité sur le scénario d’envoi de la liste.
+            <br /><br />
+            Syntaxe :
+            <ul>
+                <li>un seul courriel ou expression par ligne ;</li>
+                <li>le caractère « # » introduit un commentaire ;</li>
+                <li>le caractère « * » correspond à toute chaîne de caractères. Exemple : « *@mydomain.com » correspond à tout envoyeur de ce domaine ;</li>
+                <li>un seul caractère « * » est autorisé par ligne ;</li>
+                <li>ne pas utiliser de barre verticale (« | »), de crochets (« [ » et « ] ») ou de chevrons (« &lt; » et « &gt; ») dans le motif.</li>
+            </ul>
+            <p>
+                [% IF x_rows < 1 %]
+                    [% IF x_ucfname == 'Modlist' %]
+                        La liste de modération forcée est vide.
+                    [% ELSE %]
+                        La liste blanche est vide.
+                    [% END %]
+                [% ELSE %]
+                    [% IF x_ucfname == 'Modlist' %]
+                        La liste de modération forcée actuelle contient [% x_rows %] lignes.
+                    [% ELSE %]
+                        La liste blanche actuelle contient [% x_rows %] lignes.
+                    [% END %]
+                [% END %]
+            </p>
+
+            [% IF x_rows < 10 %]
+                [% x_rows = 10 %]
+            [% END %]
+            [% IF x_rows > 20 %]
+                [% x_rows = 20 %]
+            [% END %]
+            [% x_rows = x_rows+2 %]
+            <form class="noborder" action="[% path_cgi %]/lca/[% x_name %]/[% list %]" method="post">
+                <fieldset>
+                    <!-- note - 
+                        The params action, custom_action, list override the URL items.
+                        The cap param overrides the PATH_INO
+                        If you are POSTing, you MUST specify all...
+                        plugin.* be passed to a custom extension TT2 only!      -->
+
+                    <input type="hidden" name="action" value="lca" />
+                    <input type="hidden" name="custom_action" value="[% x_name %]" /> 
+                    [% IF list %]
+                        <input type="hidden" name="list" value="[% list %]" />
+                    [% END %]
+                    <!-- trailing / is important as it ends the parameter before the NULL -->
+                    <input type="hidden" name="cap" value="save/" />
+                    <textarea name="cap" cols="80" rows="[% x_rows %]">[% x_data %]</textarea><br />
+                    <br />
+                    <input type="submit" class="MainMenuLinks" name="x_action" value="save" />
+                    [% IF x_saveerror %]
+                        [% IF x_ucfname == 'Modlist' %]
+                            Impossible d’enregistrer la liste de modération forcée ! <B>ERROR:</B> [% x_saveerror %]
+                        [% ELSE %]
+                            Impossible d’enregistrer la liste blanche ! <B>ERROR:</B> [% x_saveerror %]
+                        [% END %]
+                    [% ELSE %]
+                        [% IF x_saved && x_saved > 0 %]
+                            [% IF x_ucfname == 'Modlist' %]
+                                La liste de modération forcée a été enregistrée ([% time %]).
+                            [% ELSE %]
+                                La liste blanche a été enregistrée ([% time %]).
+                            [% END %]
+                        [% END %]
+                    [% END %]
+                </fieldset>
+            </form>
+        </div>
+    [% ELSE %]
+        [% IF x_ucfname == 'Modlist' %]
+            Vous n’avez pas de droits suffisants pour éditer la liste de modération forcée.
+        [% ELSE %]
+            Vous n’avez pas de droits suffisants pour éditer la liste blanche.
+        [% END %]
+    [% END %]
+</div>
+<!-- end whitelist.tt2 -->

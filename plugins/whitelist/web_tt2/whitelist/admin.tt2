@@ -1,0 +1,16 @@
+<li>
+    <strong>
+        <a href="[% 'lca/modlist' | url_rel([list]) %]" >
+            Modlist:
+        </a>
+    </strong>
+    Handles the set of moderation-listed mail addresses for this list.
+</li>
+<li>
+    <strong>
+        <a href="[% 'lca/whitelist' | url_rel([list]) %]" >
+            Whitelist:
+        </a>
+    </strong>
+    Handles the set of white-listed mail addresses for this list.
+</li>

@@ -1,0 +1,14 @@
+whitelist/modlist add-in for Sympa 6.2.x
+
+Steve Shipway, University of Auckland
+s.shipway@auckland.ac.nz
+steve@steveshipway.org
+
+Luc Didry, Framasoft
+luc@framasoft.org
+
+ver 0.1 - Jan 2011 - original version
+    0.2 - Nov 2013 - using TT2 module instead of EVAL_PERL
+    1.0 - Sep 2015 - Updated for Sympa 6.2
+    1.1 - Oct 2015 - Corrections for nulls in @cap variables
+    1.2 - Jun 2020 - Simplify TT2 modifications and add fr translation (Luc Didry)

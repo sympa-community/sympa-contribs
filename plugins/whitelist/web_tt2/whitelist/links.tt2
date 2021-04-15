@@ -1,0 +1,6 @@
+<a class="actionMenuLinks" href="[% 'lca/modlist' | url_rel([list]) %]">
+    Modlist
+</a>
+<a class="actionMenuLinks" href="[% 'lca/whitelist' | url_rel([list]) %]">
+    Whitelist
+</a>

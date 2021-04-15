@@ -1,0 +1,6 @@
+<a class="actionMenuLinks" href="[% 'lca/modlist' | url_rel([list]) %]">
+    Modération forcée
+</a>
+<a class="actionMenuLinks" href="[% 'lca/whitelist' | url_rel([list]) %]">
+    Liste blanche
+</a>

@@ -1,0 +1,72 @@
+<!-- $Id: whitelist.tt2  $ -->
+<div class="block">
+
+<h2>[%|loc%][% x_ucfname %] management[%END%]</h2><br />
+
+[% IF is_owner || is_listmaster || may_add %]
+
+<div id="blacklist">
+This is the [% x_name %] for list [% list %]@[% robot %].
+<br /><br />
+[% IF x_name == "whitelist" %]
+[%|loc%]Any posts coming from users whose email address matches a pattern in the whitelist are immediately accepted.[%END%]
+[% ELSE %]
+[%|loc%]Any posts coming from users whose email address matches a pattern in the modlist are queued for moderation.[%END%]
+[% END %]
+The blacklist has highest priority, followed by the modlist and finally the whitelist; they all have higher
+priority than the list Send scenario.
+<br /><br />
+[%|loc%]Syntax:[%END%]
+<ul>
+  <li>[%|loc%]only one email or expression by line[%END%]</li>
+  <li>[%|loc%]char # introduce a comment[%END%]</li>
+  <li>[%|loc%]char * match any string. Example: "*@mydomain.com" match any sender from that exact domain[%END%]</li>
+  <li>[%|loc%]only one char * is autorized in a line[%END%]</li>
+  <li>[%|loc%]do not use vertical bar, square brackets, or angle brackets in the pattern[%END%]</li>
+</ul>
+<p>
+[% IF x_rows < 1 %]
+ [%|loc%]The current [% x_name %] is empty[%END%]
+[% ELSE %]
+ [%|loc(x_rows)%]The current [% x_name %] contains %1 line(s)[%END%]
+[% END %]
+</p>
+
+[% IF x_rows < 10 %] [% x_rows = 10 %] [% END %]
+[% IF x_rows > 20 %] [% x_rows = 20 %] [% END %]
+[% x_rows = x_rows+2 %]
+<form class="noborder" action="[% path_cgi %]/lca/[% x_name %]/[% list %]" method="post">
+<fieldset>
+ <!-- note - 
+             The params action, custom_action, list override the URL items.
+             The cap param overrides the PATH_INO
+             If you are POSTing, you MUST specify all...
+             plugin.* be passed to a custom extension TT2 only!      -->
+
+  <input type="hidden" name="action" value="lca" />
+  <input type="hidden" name="custom_action" value="[% x_name %]" /> 
+[% IF list %]
+  <input type="hidden" name="list" value="[% list %]" />
+[% END %]
+  <!-- trailing / is important as it ends the parameter before the NULL -->
+  <input type="hidden" name="cap" value="save/" />
+  <textarea name="cap" cols="80" rows="[% x_rows %]">[% x_data %]</textarea><br />
+<br /><input type="submit" class="MainMenuLinks" name="x_action" value="save" />
+[% IF x_saveerror %]
+Failed to save [% x_name %] data!  <B>ERROR:</B> [% x_saveerror %] 
+[% ELSE %]
+[% IF x_saved && x_saved > 0 %]
+[%|loc(x_ucfname) %] %1 data was saved[%END%] ([% time %]) 
+[% END %]
+[% END %]
+
+</fieldset>
+</form>
+</div>
+
+[% ELSE %]
+You do not have sufficient rights to edit the [% x_name %].
+[% END %]
+
+</div>
+<!-- end whitelist.tt2 -->

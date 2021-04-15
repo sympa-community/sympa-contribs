@@ -1,0 +1,8 @@
+title.gettext Process whitelist and modlist, if they exist
+
+# Copy/rename this scenario to be include.send.header to make white/mod lists
+# work for every list regardless of the chosen scenario
+
+search(modlist.txt)   smtp,smime,dkim -> editorkey,quiet
+search(whitelist.txt) smtp,smime,dkim -> do_it
+

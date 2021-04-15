@@ -1,0 +1,21 @@
+[% IF action == 'lca' && custom_action == 'whitelist' && x_name == 'modlist' %]
+    [% SET class = 'active' %]
+[% ELSE %]
+    [% SET class = '' %]
+[% END %]
+<li class="[% class %]">
+    <a href="[% 'lca/modlist' | url_rel([list]) %]" >
+        Modération forcée
+    </a>
+</li>
+
+[% IF action == 'lca' && custom_action == 'whitelist' && x_name == 'whitelist' %]
+    [% SET class = 'active' %]
+[% ELSE %]
+    [% SET class = '' %]
+[% END %]
+<li class="[% class %]">
+    <a href="[% 'lca/whitelist' | url_rel([list]) %]" >
+        Liste blanche
+    </a>
+</li>

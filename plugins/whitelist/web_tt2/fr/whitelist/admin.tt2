@@ -1,0 +1,16 @@
+<li>
+    <strong>
+        <a href="[% 'lca/modlist' | url_rel([list]) %]" >
+            Modération forcée :
+        </a>
+    </strong>
+    Gestion des adresses mails dont les messages passent obligatoirement en modération.
+</li>
+<li>
+    <strong>
+        <a href="[% 'lca/whitelist' | url_rel([list]) %]" >
+            Liste blanche :
+        </a>
+    </strong>
+    Gestion des adresses mails dont les messages sont automatiquement acceptés.
+</li>
