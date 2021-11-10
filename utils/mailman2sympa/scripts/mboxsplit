@@ -1,0 +1,89 @@
+#!/usr/bin/perl
+use strict;
+
+use Date::Parse;
+
+my $from;
+my $month;
+my $year;
+my $dest;
+my $dir;
+my $num;
+my $numfile;
+my $outfile;
+my $a;
+my $b;
+my $c;
+my $d;
+my $e;
+
+
+if ($#ARGV < 0) {
+	die 'need an arguement of the list name';
+}
+
+&getConfig();
+
+
+$_ = $from = <STDIN>;
+/[^ ]* +[^ ]* +(.*)/;
+($a,$b,$c,$d,$month,$year,$e) = strptime($1);
+
+$month=sprintf('%02d',$month+1);
+$dir=$ENV{'MHONARC_ARC'} . '/' . $ARGV[0] . '@' . $ENV{'DOMAIN'} . '/' . ($year + 1900) . '-' . $month;
+$dest=$dir . '/arctxt';
+$numfile=$dir . '/index';
+
+if ( open NUM, '<', $numfile) {
+	$num = <NUM>;
+	close(NUM);
+	$num++;
+	`echo $num > $numfile`;
+} else {
+	print ' ' . ($year + 1900) . '-' . $month;
+	`mkdir -p $dest`;
+	$num=1;
+	`echo $num > $numfile`;
+}
+
+$outfile=$dest . '/' . $num;
+unless ( open FILE,'>', $outfile ) {
+	die;
+}
+
+print FILE $from;
+
+while (<STDIN>) {
+	print FILE $_;
+}
+close FILE;
+#
+# getConfig
+
+#
+sub getConfig
+        {
+        my @env         = qx|. ./conf/mailman2sympa.conf;set|;
+
+        #
+        # Import ENV from mailman2sympa.conf into Perl-ENV
+        #
+        foreach my $env (@env)
+                {
+                chomp $env;
+                $env =~ /^\s*(.*?)\s*=\s*(.*)/;
+
+                unless (exists($ENV{$1}) || $1 eq 'SHELLOPTS')
+                        {
+                        my $name        = $1;
+                        my $value       = $2;
+
+                        if ($value =~ /^\'(.*)\'$/)
+                                {
+                                $value = $1;
+                                }
+
+                        $ENV{$name} = $value;
+                        }
+                }
+        }

@@ -1,0 +1,18 @@
+#!/usr/bin/perl -w
+#
+# mailman2sympa doesn't convert the mailman info field, since, in
+# sympa, it's a separate, per-list file (expl/listname/info).
+#
+# This script does the simple conversion of that field.
+#
+#   dumpdb listname.pck | mm2s_info > expl/listname/info
+
+for (<STDIN>) {
+   next unless /^\s*'info':\s*'(.*)'/;
+   $_ = $1;
+   s/\\n/\n/g;
+   s/\\r/\r/g;
+   s/\\t/\t/g;
+   print $_, "\n" if $_;
+   exit 0;
+}

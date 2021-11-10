@@ -1,0 +1,58 @@
+Mailman Installation Guide
+--------------------------
+
+
+If you are able to read this file , you probably accomplished the main part of installation:
+
+- Get mailman2sympa-<version>.tgz
+
+- unpack the package: tar -xzvf mailman2sympa-<version>.tgz  
+
+- enter the  mailman2sympa-<version> directory
+
+Now you still have to configure mailman2sympa:
+
+- edit conf/mailman2sympa.conf
+  The file is well documented (I hope). Just follow instructions
+
+
+And lauch the task:
+
+./mailman2sympa.sh
+
+After completion
+----------------
+
+- a directory is created under the $EXPL directory of sympa
+
+- in each directory you can find a config file and a subscribers file.
+
+- if you asked it, you will find all messages splited under the mhonarc archive directory. 
+  You may now use the web interface, connect as listmaster (as specified in /etc/sympa.conf)
+  go to "sympa admin" and ask for converting all lists to html. Click only once on the
+  button, don't care about the error message (sympa 3.2.1). The process runs in the
+  background, and may take a long time.
+
+- you can add the file $WDIR/aliases-sympa at the bottom of /etc/aliases.
+  If you chose to set a prefix, you don't still have to remove mailman lists aliases.
+  Run "rewaliases".
+
+- load the subscribers files into the database.
+  You've got two options: loading subscribers from sympa list-subscriber-files (via
+  'loadsubscribers_from_config.sh') or mailman2sympa-generated CSV-Files in WDIR (see
+  'conf/mailman2sympa.conf')
+
+- run 'crypt_passwords.pl' from sympa-directory (usually in /sbin or /bin)
+
+
+For 'mailman2sympa.sh' you can give as parameter a file name containing the names of the
+lists to process. One name per line. By default, all lists of mailman are processed.
+
+Example:
+./mailman2sympa.sh restricted_liste
+
+
+Enjoy!
+
+Philippe Allart
+

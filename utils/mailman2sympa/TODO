@@ -1,0 +1,18 @@
+Things that are converted:
+user language preferences,
+user bounce status
+
+Lst config headers and footers
+
+email addresses like
+'=?iso-8859-15?q?=22fred_fr=f6hlich_=28gremlin_list=29?='
+
+
+Some posting rules are not converted correctly.  In particular,
+announce-only lists (what sympa calls a "newsletter") wind up
+moderated for everyone.  To tinker with this, edit the mm2s_config
+script and look for the "send" rule in there.
+
+The mm2s_info script doesn't always work, and isn't integrated into
+the framework.  The info field in mailman is just a field, but in
+sympa it's a separate file.

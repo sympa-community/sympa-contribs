@@ -1,0 +1,92 @@
+#!/usr/bin/perl -w
+
+# mm2s_subscribers - Generate a csv of subscribers.
+#
+#	Author: John Bazik
+#
+# Copyright 2010 Brown University
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+
+use lib 'lib';
+
+use JSON;
+
+my $m_cfg;
+
+#
+# Load mailman config.
+#
+{
+   local $/=undef;
+   $m_cfg = decode_json <STDIN>;
+}
+
+my $list_name = lc($m_cfg->{real_name});
+my @now = localtime;
+my $now = sprintf("%d-%02d-%02d", $now[5] + 1900, $now[4] + 1, $now[3]);
+
+my %users = map {$_, 1}
+		keys %{$m_cfg->{user_options}},
+		@{$m_cfg->{accept_these_nonmembers}},
+;
+
+# User options: bitmasks from mailman's Defaults.py
+my $notmetoo = 2;	# DontReceiveOwnPosts (Non-digesters only)
+my $ack = 4;		# AcknowledgePosts
+my $plain = 8;		# DisableMime (Digesters only)
+my $hide = 16;		# ConcealSubscription
+my $noremind = 32;	# SuppressPasswordReminder
+my $alltopics = 64;	# ReceiveNonmatchingTopics
+my $mod = 128;		# Moderate
+my $nodups = 256;	# DontReceiveDuplicates
+
+# Delivery status, from mailman's MemberAdaptor.py
+my $enabled = 0;	# ENABLED
+my $unknown = 1;	# UNKNOWN (legacy disabled)
+my $byuser = 2;		# BYUSER
+my $byadmin = 3;	# BYADMIN (disabled by admin choice)
+my $bybounce = 4;	# BYBOUNCE
+
+for my $user (sort keys %users) {
+   my ($name, $date, $vis, $rcpt);
+
+   my $options = $m_cfg->{user_options}->{$user};
+
+   $date = $now;
+
+   if (defined $options) {	# actual subscriber
+      $name = $m_cfg->{usernames}->{$user} || '';
+      $vis = $options & $hide ? 'conceal' : 'noconceal';
+
+      my $status = $m_cfg->{delivery_status}->{$user};
+      if ($status && $status->[0]) {
+         $rcpt = 'nomail';
+      }
+      elsif (exists $m_cfg->{digest_members}->{$user}) {
+         $rcpt = $options & $plain ? 'digestplain' : 'digest';
+      }
+      else {
+         $rcpt = $options & $notmetoo ? 'not_me' : 'mail';
+      }
+   }
+   else {			# non-member
+      $name = 'nonmember';
+      $vis = 'conceal';
+      $rcpt = 'nomail';
+   }
+
+   print "$list_name;$user;$name;$date;$vis;$rcpt\n";
+}

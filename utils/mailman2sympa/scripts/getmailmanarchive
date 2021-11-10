@@ -1,0 +1,76 @@
+#!/bin/sh
+
+. ./conf/mailman2sympa.conf
+
+if [ "$CLEAN_ARCHIVE" = "yes" ] ; then
+	echo -n 'Are you sure that you want remove all sympa archive (yes/no) ? '
+	read r
+	if [ "$r" != "yes" ] ; then
+		echo Please fix mailman2sympa.conf and try again
+		exit
+	fi
+	echo
+	echo Cleaning archives...
+	rm -rf $MHONARC_ARC
+	echo
+fi
+
+if [ ! -d $MHONARC_ARC ] ; then
+	mkdir  $MHONARC_ARC
+fi
+
+for l in $1 ; do
+	if [ -f $MAILMAN_VAR/archives/public/$l.mbox/$l.mbox ] ; then
+		echo -e "\nprocessing list $l"
+		cat $MAILMAN_VAR/archives/public/$l.mbox/$l.mbox | formail -s scripts/mboxsplit $l
+		continue
+	elif [ -f $MAILMAN_VAR/archives/private/$l.mbox/$l.mbox ] ; then
+		echo -e "\nprocessing list $l"
+		cat $MAILMAN_VAR/archives/private/$l.mbox/$l.mbox | formail -s scripts/mboxsplit $l
+		continue
+	fi
+	for y in $YEARS  ; do
+		m=0
+		for mc in January February March April May June July August September October November December ; do
+			m=$[m+1]
+			month=`printf "%04d-%02d" $y $m`
+			mail=""
+			if [ -f $MAILMAN_VAR/archives/public/$l/${y}-${mc}.txt ] ; then
+				mail=$MAILMAN_VAR/archives/public/$l/${y}-${mc}.txt
+				cat=cat
+			elif  [ -f $MAILMAN_VAR/archives/public/$l/${y}-${mc}.txt.gz ] ; then 		
+				mail=$MAILMAN_VAR/archives/public/$l/${y}-${mc}.txt.gz
+				cat="gunzip -c"
+			elif  [ -f $MAILMAN_VAR/archives/private/$l/${y}-${mc}.txt ] ; then 		
+				mail=$MAILMAN_VAR/archives/private/$l/${y}-${mc}.txt
+				cat="cat"
+			elif  [ -f $MAILMAN_VAR/archives/private/$l/${y}-${mc}.txt.gz ] ; then 		
+				mail=$MAILMAN_VAR/archives/private/$l/${y}-${mc}.txt.gz
+				cat="gunzip -c"
+			fi
+			if [ "$mail" != "" ] ; then
+				#echo "processing list $l - $month"
+				dest=$MHONARC_ARC/${l}@$DOMAIN/${month}/arctxt
+				index=$MHONARC_ARC/${l}@$DOMAIN/${month}/index
+				if [ ! -d $dest ] ; then
+					mkdir -p  $dest
+				fi
+				echo 0 > $index
+				$cat $mail | formail -s scripts/dispatch_messages $dest $index
+				echo $l $month ':' `cat $index` messages
+			fi
+		done
+	done
+
+	dest="$MHONARC_ARC/${l}@$DOMAIN"
+	if [ ! -d $dest ] ; then
+        	mkdir -p  $dest
+		echo $l has an empty archive!
+	fi
+done
+
+echo
+echo Giving archive to $USER...
+chown -R ${USER}:${GROUP} $MHONARC_ARC 
+
+
