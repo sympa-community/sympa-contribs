@@ -2,6 +2,4 @@ BUGS:
 
 The script to load the admins doesn't query the comment_user correctly
 
-Non-[a-z] characters in Gecos are escaped \xf3
-
 probably other stuff too.
