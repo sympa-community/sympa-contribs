@@ -16,3 +16,5 @@ script and look for the "send" rule in there.
 The mm2s_info script doesn't always work, and isn't integrated into
 the framework.  The info field in mailman is just a field, but in
 sympa it's a separate file.
+
+Virtual domains supprt
