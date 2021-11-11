@@ -1,9 +1,10 @@
-mailman2sympa 0.7, Konstantin Lepikhov - Nov 2020
+mailman2sympa 0.7, Konstantin Lepikhov - Nov 2021
 
 + rewrote configuration parsing (use python unpickle)
 + import list info (if exists)
 + don't import if list host_name doesn't match
 + handle unicode names for users/subscribers
++ update import users script for sql scheme changes.
 
 mailman2sympa 0.5, John Bazik - May 2010
 
