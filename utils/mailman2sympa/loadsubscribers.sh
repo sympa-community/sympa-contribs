@@ -4,4 +4,4 @@
 
 ./scripts/loadsubscribers.pl
 
-# [ -x "${SYMPA_SMTPSCRIPTS}"/crypt_passwd.pl ] && "${SYMPA_SMTPSCRIPTS}"/crypt_passwd.pl
+# [ -x "${SYMPA_SMTPSCRIPTS}"/upgrade_sympa_passwd.pl ] && "${SYMPA_SMTPSCRIPTS}"/upgrade_sympa_passwd.pl

@@ -42,7 +42,7 @@ After completion
   'loadsubscribers_from_config.sh') or mailman2sympa-generated CSV-Files in WDIR (see
   'conf/mailman2sympa.conf')
 
-- run 'crypt_passwords.pl' from sympa-directory (usually in /sbin or /bin)
+- run 'upgrade_sympa_password.pl' from sympa-directory (usually in /sbin or /bin)
 
 
 For 'mailman2sympa.sh' you can give as parameter a file name containing the names of the
