@@ -1,5 +1,4 @@
-Presentation
-------------
+## Presentation
 
 Mailman2sympa is a set of scripts aimed to facilitate the migration
 of mailing list managed by mailman to sympa.
@@ -11,8 +10,7 @@ project manager.
 I hope that each user will have the good idea to send back all
 enhancement they would have to apply to the package.
 
-Features
---------
+## Features
 
 The version 0.0.3 of the package can do the following tasks:
 
@@ -23,7 +21,7 @@ The version 0.0.3 of the package can do the following tasks:
   with the appropriates attributes, when still relevant.
 
 - creates an aliases file to be concatenated at the bottom
-  of /etc/aliases.
+  of `/etc/aliases`.
 
 - split the archives stored by mailman into the mhonarc
   archive directory
@@ -33,8 +31,8 @@ The version 0.0.3 of the package can do the following tasks:
   nicely process attachments.
 
 - load the subscribers files into the database. Can specify
-  a different database (NEW_DATABASE) for testing. Change
-  NEW_DATABASE=DATABASE for migration
+  a different database `(NEW_DATABASE)` for testing. Change
+  `NEW_DATABASE=DATABASE` for migration
 
 This scripts gave me a good result, but I'm not sure they
 would for you. If you have problems, I can take an hand,
@@ -51,7 +49,10 @@ Philippe Allart
 DumperSwitchboard problem - edit $MAILMAN_HOME/bin/dumpdb as follows:
 http://arkiv.netbsd.se/?ml=mailman-users&a=2007-07&t=4791032
 
-Required packages:
-gawk
-libdbd-csv-perl
-procmail (for archive migration)
+### Required packages:
+- gawk
+- libdbd-csv-perl
+- procmail (for archive migration)
+- perl-JSON
+- jq
+- python2 (pickle and json modules)
