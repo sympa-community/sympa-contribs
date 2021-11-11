@@ -99,6 +99,9 @@ read IMPORT
 
 if [ "$IMPORT" == "y" ]; then
 	./loadsubscribers.sh
+	if [ "$?" -eq 0 ]; then
+		echo "Import complete. Don't forget to run 'sympa_upgrade_password.pl' to update password hashes"
+	fi
 fi
 
 echo
