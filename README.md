@@ -12,6 +12,7 @@ it You can also update this README by giving a brief description of your contrib
 ### Plugins
 
 * [message_plugin_autoresponder](plugins/message_plugin_autoresponder/README.md): A simple autoresponder applicable to Sympa's mailing lists.
+* [Whitelist](https://github.com/sshipway/sympa-6.2-plugins): Allow whitelists and Modlists as well as Blacklists for posting, managed via the web interface
 
 ### Custom scenario conditions
 
