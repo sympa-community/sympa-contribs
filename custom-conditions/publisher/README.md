@@ -34,4 +34,4 @@ CustomCondition::publisher([listname],[sender],)   smime,md5 ->   do_it
 Feel free to modify this code to your wish and, please, contribute your changes, corrections and improvements.
 
 ## License
-MIT, (c) 2019 Luis A. Martínez. See the [LICENSE file](LICENSE) for details.
+MIT, (c) 2019 Luis A. Martínez. See the [LICENSE file](LICENSE.md) for details.

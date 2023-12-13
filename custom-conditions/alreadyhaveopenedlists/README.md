@@ -30,4 +30,4 @@ Don’t be confused if the user still does not pass the condition after you open
 
 ## License
 
-MIT, (c) 2019 Framasoft. See the [LICENSE file](LICENSE) for details.
+MIT, (c) 2019 Framasoft. See the [LICENSE file](LICENSE.md) for details.
