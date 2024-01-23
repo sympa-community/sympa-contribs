@@ -1,0 +1,91 @@
+mailman2sympa 0.7, Konstantin Lepikhov - Nov 2021
+
++ rewrote configuration parsing (use python unpickle)
++ import list info (if exists)
++ don't import if list host_name doesn't match
++ handle unicode names for users/subscribers
++ update import users script for sql scheme changes.
+
+mailman2sympa 0.5, John Bazik - May 2010
+
++ rewrote awk mailman config parsing scripts in perl
++ broke up scripts so that there is one per file generated
++ added translations for more list options
++ added ban_list/blacklist translation
++ dropped old-style subscriber list generation
++ made mailman2sympa.sh a little more concise
++ added mm2s_info script to pull list description info (not integrated)
++ added list_, add_ and remove_members mailman-like scripts
+
+mailman2sympa 0.4, Daniel Black -  March 2009
+
++ fixed lots to make it work with mailman-2.1.9
++ user gecos data now imported
++ mailman user options now respected that bit more
++ admin data now migrated
++ lots more error checking to you don't overwrite stuff unitentionall
++ additional database name to preview the changes in
++ parses mbox archives so no mime hacks are needed
++ email addresses with + now work
+
+mailman2sympa 0.0.2, Andreas de Pretis -  February 2003
+
+
+mailman2sympa.awk
+- -----------------
++) moved to awk/mailman2sympa.awk
++) modified format for aliases (match sympa-generated
+   format)
++) added review, invite, clean_delay_queuemod, domain, footer_type
+   owner, digest, type_archive, expire_task, spam_protection,
+   web_archive_spam_protection, date_epoch, date, profile and
+   the resulting printfs, etc.
++) removed remind_task
++) compatibility with latest sympa-version (3.4.3)
+
+subscribers.awk
+- ---------------
++) moved to awk/subscribers.awk
++) added password-support
++) modified CSV-Format (null instead of _null_, ...)
+
+mailman2sympa.sh
+- ----------------
++) ask user to run loadsubscribers.sh automatically (y/n)
++) created $WDIR if it doesn't exist
++) create CSV-Files in $WDIR/csv as import_users.csv
+   and import_subscribers.csv
++) added DOMAIN=$DOMAIN, SMTPSCRIPTPATH=$SYMPA_SMTPSCRIPTS and 
+   OWNER=$DEFAULT_OWNER when running awk/mailman2sympa.awk
++) added support for ISO-8859-1 Charset (parse $WDIR/lists/$f)
+
+load_subscribers_Pg.pl
+- ----------------------
++) removed because it won't be used by load_subscribers_Pg.sh
+   (which used the loadsubscribers.pl in sympa-home (/bin or /sbin)
+
+load_subscribers_Pg.sh
+- ----------------------
++) removed because of new CSV-Import
+
+mailman2sympa.conf
+- ------------------
++) added 1990-1997 to YEARS
++) default WDIR is /tmp/mailman
++) added DEFAULT_OWNER
++) added CLEANTABLES
++) added HOSTDB and PASSWORDDB
++) added SYMPA_SBIN, SYMPA_LIB and SYMPA_SMTPSCRIPTS
++) default USER and GROUP set to 'sympa' (if you install
+   sympa as described in the documentation, apache must not
+   be the owner of expldir and arcdir
++) added empty line between parameters/settings
+
+general
+- -------
++) moved *.pl and additional sh-scripts to scripts
++) moved awk-scripts to awk
++) moved INSTALL, LICENCE and COPYING to docs
++) moved mailman2sympa.conf to conf
++) slightly modified README and INSTALL to match my changes
+

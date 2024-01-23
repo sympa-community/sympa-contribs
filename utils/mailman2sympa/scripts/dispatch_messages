@@ -1,0 +1,20 @@
+#!/bin/sh
+
+NUM=`cat $2`
+NUM=$[NUM+1]
+echo $NUM > $2
+. ./conf/mailman2sympa.conf
+if [ "$RESTORE_MULTIPART" = "yes" ] ; then
+	cat > $WDIR/message.$$
+	multipart=`awk -f ./awk/test_multipart.awk $WDIR/message.$$`
+	if [ "$multipart" != ""  ] ; then
+		cat $WDIR/message.$$ | formail -a "Content-Type: multipart/mixed;
+  boundary=\"$multipart\"" > $1/$NUM
+	else
+		cat $WDIR/message.$$ > $1/$NUM
+	fi
+	rm -f $WDIR/message.$$ 
+else
+cat > $1/$NUM
+fi
+

@@ -1,0 +1,94 @@
+#!/usr/bin/perl -w
+
+# list_members - a mailman-like command for sympa that lists the
+#       subscribers of a particular list.
+#
+#       Author: John Bazik
+#
+# Copyright 2010 Brown University
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+
+use DBI;
+use Getopt::Long;
+
+use strict;
+
+##
+## Set your default robot here, e.g. lists.example.com
+##
+my $default_robot = '';
+
+my($opt_h);
+
+my $usage = 'usage: list_members [-h] listname
+	-h	print this help message
+';
+
+GetOptions(
+	'h|help' => \$opt_h,
+) or die $usage;
+
+if ($opt_h) {
+   print $usage;
+   exit 0;
+}
+
+die $usage unless @ARGV;
+my ($listname, $robot) = split(/\@/, shift @ARGV);
+$robot ||= $default_robot;
+
+my $configfile = '/etc/sympa/sympa.conf';
+my $config = config($configfile);
+my $dbh = dbh($config);
+
+my $rows = $dbh->selectcol_arrayref(join(' ',
+	"SELECT user_subscriber FROM subscriber_table",
+	"WHERE list_subscriber = '$listname'",
+	$robot ? "AND robot_subscriber = '$robot'" : '',
+));
+
+print join("\n", sort @$rows), @$rows ? "\n" : '';
+
+sub dbh {
+   my $config = shift;
+
+   my $dsn = "dbi:$config->{db_type}:dbname=$config->{db_name}";
+   $dsn .= ";host=$config->{db_host}" if $config->{db_host};
+   $dsn .= ";port=$config->{db_port}" if $config->{db_port};
+
+   return DBI->connect($dsn, $config->{db_user}, $config->{db_passwd});
+}
+
+sub config {
+   my $file = shift;
+   my @fields = qw(db_type db_name db_passwd db_user db_port db_host);
+   my $config = {};
+
+   my $pat = join('|', @fields);
+
+   open my $fd, $file or die "$file: $!\n";
+   for (<$fd>) {
+      if (/^\s*($pat)\s+(.+)/) {
+         $config->{$1} = $2;
+      }
+   }
+   close $fd;
+
+   for (qw(db_type db_name)) {
+      die "$configfile: missing $_ field\n" unless $config->{$_};
+   }
+   return $config;
+}

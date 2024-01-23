@@ -1,0 +1,16 @@
+Mailman has a number of commands for manipulating lists and subscribers.
+Contained here are three:
+
+add_members
+list_members
+remove_members
+
+If you use robots, as we do, list names require a little finessing,
+which the latter two scripts have, but add_members does not (but could
+if someone would like to improve it).
+
+Add_members uses sympa's command-line options.  The other two scripts
+go directly to the database.  Needless to say, that makes them a little
+more fragile.
+
+- John Bazik, 30 Aug 2010

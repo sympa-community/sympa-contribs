@@ -1,0 +1,129 @@
+# 
+# IMPORTANT THINGS TO SET
+# DOMAIN
+# PASSWORDDB
+# DEFAULT_OWNER
+
+
+######  Configuration file for Mailman2Sympa ###############
+#
+#  System environment
+#
+# Give below USER an GROUP that sympa is running as
+#
+USER=sympa
+GROUP=sympa
+
+#
+# Where SYMPA has been installed
+#
+SYMPA_SMTPSCRIPTS=/usr/lib/sympa/bin/
+EXPL=/var/lib/sympa/expl/
+
+#
+# Where Mailman has been installed
+#
+# for binaries
+MAILMAN_HOME=/usr/lib/mailman
+# for list information
+MAILMAN_VAR=/var/lib/mailman
+
+#
+# WXhere to put archives (the 'arc_path' value in /etc/wwsympa.conf)
+#
+MHONARC_ARC=/var/lib/sympa/wwsarchive
+
+#
+# The domain name of your sever (the right part, after @, of lists adresses)
+DOMAIN=""
+
+#
+# SGBD uses the DBI perl function. Use any database it supports
+#
+# Database information
+# Should be the same as in sympa.conf
+#
+SGBD="mysql"
+# current database
+DATABASE="sympa"
+# test database - see if everthing loaded ok
+#NEW_DATABASE="sympa-test"
+# for the real migration
+NEW_DATABASE="sympa"
+USERDB="sympa"
+HOSTDB="localhost"
+PASSWORDDB=""
+
+#
+# Should all rows in user_table and subscriber_table be deleted before import?
+#
+CLEANTABLES=0
+
+# Should existing users be overwritten
+RESET_PASSWORDS=0
+
+#
+# default owner of lists
+#
+## IMPORTANT _ SET THIS
+DEFAULT_OWNER=""
+
+##################################################################
+# Parameter for the next run of mailman2sympa
+##################################################################
+#
+# Where will be writen temporary and resulting files.
+# After processing, you will find in this directorty some goodies like
+# the email of all users and a semi-column separated file for 
+# subscriptions (not used), and aliases-sympa that you will insert into
+# /etc/aliases
+#
+WDIR=/tmp/mailman
+
+#
+# Do you want keep subscription which have been turned "nomail"
+# You may not want to keep them if you set them as 'nomail'
+# because the adresses were bouncing. The user can also set this for
+# vacation notices.
+# 
+TAKE_NOMAIL="yes"
+
+#
+# Which years do you want put in archive
+# OK, this syntax could be better, but it has some advantages, and
+# the script is simpler.
+#
+YEARS="1990 1991 1992 1993 1994 1995 1996 1997 1998 1999 2000 2001 2002 2003 2004 2005 2006 2007 2008 2009 2010 2010 2011 2012 2013 2014 2015 2016"
+
+#
+# Default subscription date
+#
+DEFAULT_DATE="2008-01-01"
+
+#
+# You may want use temporary aliases during 
+# some times for testing
+# Used to generate $WDIR/aliases-sympa
+#
+ALIAS_PREFIX=""
+
+# do you want the aliases to include the domainname? if so say 'yes'
+VIRTUAL_ALIASES="no"
+
+#
+# Do you want pick up mailman archive?
+#
+CONVERT_ARCHIVE="yes"
+
+#
+# Do you want remove and create the sympa archive directory
+# before importing mailman archive?
+#
+CLEAN_ARCHIVE="no"
+
+#
+# Mailman drop Content-Type header, so that 
+# multipart bodies are no more recognized.
+# Do you want try to restore multipart headers?
+#
+RESTORE_MULTIPART="yes"

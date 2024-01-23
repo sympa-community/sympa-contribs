@@ -1,0 +1,24 @@
+#!/bin/sh
+
+. ./conf/mailman2sympa.conf
+
+LIST=$1
+
+if [ "$VIRTUAL_ALIASES" = "yes" ]; then
+	domain="@$DOMAIN"
+else
+	domain=''
+fi
+
+PREFIX=$ALIAS_PREFIX
+SYMPA_PATH=$(echo $SYMPA_SMTPSCRIPTS | sed 's/\/$//')
+
+echo ""
+echo "# ---------------- $PREFIX$LIST$domain"
+echo "$PREFIX$LIST$domain: \"| $SYMPA_PATH/queue $LIST$domain\""
+echo "$PREFIX$LIST-request$domain: \"| $SYMPA_PATH/queue $LIST-request$domain\""
+echo "$PREFIX$LIST-editor$domain: \"| $SYMPA_PATH/queue $LIST-editor$domain\""
+echo "$PREFIX$LIST-owner$domain: \"| $SYMPA_PATH/bouncequeue $LIST$domain\""
+echo "$PREFIX$LIST-unsubscribe$domain: \"| $SYMPA_PATH/queue $LIST-unsubscribe$domain\""
+echo "# $PREFIX$LIST-subscribe$domain: \"| $SYMPA_PATH/queue $LIST-subscribe$domain\""
+echo ""

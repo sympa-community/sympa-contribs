@@ -1,0 +1,64 @@
+#!/bin/sh
+
+# add_members - Add members to a sympa list.  This is a mailman-like
+#	command that uses sympa.pl to add new subscribers.
+#
+#       Author: John Bazik
+#
+# Copyright 2010 Brown University
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+
+# NOTE: set your default robot here.  This script could be improved
+# by also accepting listnames like listname@robot.
+robot=
+
+usage() {
+   cat <<EOF
+usage: add_members -r file listname
+	-r file	  file containing addresses of members to add, one per line
+EOF
+   exit 0
+}
+
+file=
+listname=
+while test $# -gt 0; do
+   case $1 in
+      -r)
+         file="$2"
+         shift
+         ;;
+      -*)
+         usage
+         ;;
+      *)
+         [ "$listname" ] && usage
+         listname=$1
+         ;;
+   esac
+   shift
+done
+
+[ "$file" ] || usage
+[ "$listname" ] || usage
+
+if [ "$file" = - ]; then
+   echo "sympa --import=$listname@$robot"
+   sympa --import=$listname@$robot
+else
+   echo "cat $file | sympa --import=$listname@$robot"
+   cat $file | sympa --import=$listname@$robot
+fi

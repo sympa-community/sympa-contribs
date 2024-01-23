@@ -24,6 +24,7 @@ it You can also update this README by giving a brief description of your contrib
 Tools for sysadmins.
 
 * [datasources_utils](utils/datasources_utils/README.md): view and test list datasources and custom attributes datasources
+* [mailman2sympa](utils/mailman2sympa/README.md): mailman 2.x migration scripts
 * [sympatoldap](utils/sympatoldap/README.md): creates LDAP entries for every list (and its aliases) whose status is open on the LDAP server
 * [splitting_daemons_logs](utils/splitting_daemons_logs/README.md): split Sympa processus logs into separated files
 * [sqlite2mysql](utils/sqlite2mysql/README.md): attempt to convert sqlite to mysql

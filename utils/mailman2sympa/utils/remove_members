@@ -1,0 +1,133 @@
+#!/usr/bin/perl -w
+
+# remove_members - a mailman-like command for sympa that removes
+#       subscribers from a list.
+#
+#       Author: John Bazik
+#
+# Copyright 2010 Brown University
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+
+use DBI;
+use Getopt::Long;
+
+use strict;
+
+##
+## Set your default robot here, e.g. lists.example.com
+##
+my $default_robot = '';
+
+my($opt_a, $opt_f, $opt_h, $opt_fromall);
+
+my $usage = 'usage: remove_members [options] [listname] [addr ...]
+        -a         remove all members of the mailing list
+        -f file    remove member addresses found in the given file
+        --fromall  remove members from all lists (cannot be used with -a)
+        -h         print this help message
+';
+
+GetOptions(
+	'a|all' => \$opt_a,
+	'f|file=s' => \$opt_f,
+	'fromall' => \$opt_fromall,
+	'h|help' => \$opt_h,
+) or die $usage;
+
+if ($opt_h) {
+   print $usage;
+   exit 0;
+}
+
+die $usage if $opt_a && $opt_fromall;
+
+my ($listname, $robot) = split(/\@/, shift @ARGV) if @ARGV;
+$robot ||= $default_robot;
+
+die $usage unless $opt_fromall || $listname;
+
+my @members;
+if ($opt_f) {
+   if ($opt_f eq '-') {
+      chomp(@members = <STDIN>);
+   }
+   else {
+      open my $fd, $opt_f or die "$opt_f: $!\n";
+      chomp(@members = <$fd>);
+      close $fd;
+   }
+}
+else {
+   @members = @ARGV;
+}
+
+my $configfile = '/etc/sympa/sympa.conf';
+my $config = config($configfile);
+my $dbh = dbh($config);
+
+my $sql = join(' ',
+	"DELETE FROM subscriber_table WHERE",
+        join(' AND ',
+		$opt_fromall ? () : "list_subscriber = '$listname'",
+		$robot ? "robot_subscriber = '$robot'" : (),
+		$opt_a ? () : "user_subscriber = ?",
+        ),
+);
+
+my $sth = $dbh->prepare($sql);
+
+if ($opt_a) {
+   $sth->execute;
+}
+elsif (@members) {
+   for (@members) {
+      $sth->execute($_);
+   }
+}
+else {
+   die $usage;
+}
+
+sub dbh {
+   my $config = shift;
+
+   my $dsn = "dbi:$config->{db_type}:dbname=$config->{db_name}";
+   $dsn .= ";host=$config->{db_host}" if $config->{db_host};
+   $dsn .= ";port=$config->{db_port}" if $config->{db_port};
+
+   return DBI->connect($dsn, $config->{db_user}, $config->{db_passwd});
+}
+
+sub config {
+   my $file = shift;
+   my @fields = qw(db_type db_name db_passwd db_user db_port db_host);
+   my $config = {};
+
+   my $pat = join('|', @fields);
+
+   open my $fd, $file or die "$file: $!\n";
+   for (<$fd>) {
+      if (/^\s*($pat)\s+(.+)/) {
+         $config->{$1} = $2;
+      }
+   }
+   close $fd;
+
+   for (qw(db_type db_name)) {
+      die "$configfile: missing $_ field\n" unless $config->{$_};
+   }
+   return $config;
+}

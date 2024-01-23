@@ -1,0 +1,285 @@
+#!/usr/bin/perl -w
+
+# mm2s_config - Convert the output of Mailman's dumpdb command into
+#	a matching Sympa list configuration.  This script is a filter,
+#	it reads stdin and writes to stdout.
+#
+#	Author: John Bazik
+#
+# Copyright 2010 Brown University
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+
+use JSON;
+
+my ($m_cfg, @s_cfg);
+
+#
+# Load mailman config.
+#
+{
+   local $/=undef;
+   $m_cfg = decode_json <STDIN>;
+}
+
+my $list_name = lc($m_cfg->{real_name});
+my $now = localtime(time);
+my $boolmap = {		# to normalize boolean settings
+      '0' => 0, False => 0,
+      '1' => 1, True => 1,
+};
+
+my @mo = qw(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec);
+
+#
+# Generate Sympa config
+#
+addlines(
+   "## Converted from Mailman by mailman2sympa, $now",
+   "## List '$list_name'",
+);
+
+#----------------------------------------------------------------
+# Translate list options starting here.
+#----------------------------------------------------------------
+
+{  my $subject;
+
+   $subject = $m_cfg->{description} || "\u$list_name mailing list";
+#   $subject = decode_json '"'.$subject.'"';
+   addlines(
+      "subject $subject",
+   );
+}
+
+setopt('status', undef, 'open');
+
+setopt('visibility', 'advertised', 'conceal', {
+      True => 'noconceal', 1 => 'noconceal',
+      False => 'conceal',  0 => 'conceal',
+});
+
+setopt('subscribe', 'subscribe_policy', 'auth', {
+      1 => 'auth',
+      2 => 'owner',
+      3 => 'auth_owner',
+});
+
+setopt('unsubscribe', 'unsubscribe_policy', 'auth', {
+      0 => 'auth',
+      1 => 'auth_owner',
+});
+
+{  my $send;
+
+   my $mm_nma = $m_cfg->{generic_nonmember_action};
+   my $mm_dmm = $boolmap->{$m_cfg->{default_member_moderation}};
+   if ($mm_nma == 0) {			# public
+      $send = 'public';
+   }
+   elsif ($mm_nma == 1 && $mm_dmm) {	# moderated
+      $send = 'editorkey';
+   }
+   elsif ($mm_nma == 1 && !$mm_dmm) {	# private, moderate non-subscribers
+      $send = 'privateoreditorkey';
+   }
+   elsif ($mm_nma > 1 && $mm_dmm) {	# private, moderated
+      $send = 'privateandeditorkey';
+   }
+   else {				# private
+      $send =  'private';
+   }
+   setopt('send', undef, $send);
+}
+
+{  my $owner;
+
+   if (my $mm_owner = $m_cfg->{owner}) {
+      for $owner (@$mm_owner) {
+         addlines(
+            "owner",
+            "email $owner",
+            "profile privileged",
+         );
+      }
+   }
+}
+
+{  my $editor;
+
+   if (my $mm_mod = $m_cfg->{moderator}) {
+      for $editor (@$mm_mod) {
+         addlines(
+            "editor",
+            "email $editor",
+         );
+      }
+   }
+}
+
+setopt('digest', undef, '0,1,2,3,4,5,6 12:00')
+					if $boolmap->{$m_cfg->{digestable}};
+
+{  my $reply_to_header;
+
+   my $mm_goesto = $m_cfg->{reply_goes_to_list};
+
+   my @extra;
+   if ($mm_goesto == 0) {
+      $reply_to_header = 'sender';
+   }
+   elsif ($mm_goesto == 1) {
+      $reply_to_header = 'list';
+   }
+   elsif ($mm_goesto == 2) {
+      $reply_to_header = 'other_email';
+      my $addr = $m_cfg->{reply_to_address} || '';
+      push @extra, "other_email $addr" if $addr;
+   }
+   if ($boolmap->{$m_cfg->{first_strip_reply_to}}) {
+      push @extra, "apply forced";
+   }
+   addlines(
+      "reply_to_header",
+      "value $reply_to_header",
+      @extra,
+   );
+}
+
+{  my $created_at;
+
+   if (my $mm_created_at = $m_cfg->{created_at}) {
+      my $owner = ($m_cfg->{owner} && @{$m_cfg->{owner}}) ?
+            $m_cfg->{owner}->[0] : 'unknown@example.com';
+      my $ts = int($mm_created_at);
+      my @ts = localtime($ts);
+      addlines(
+         "creation",
+         "email $owner",
+         sprintf("date %02d %s %04d at %02d:%02d:%02d",
+               $ts[3], $mo[$ts[4]], $ts[5] + 1900, $ts[2], $ts[1], $ts[0]),
+         "date_epoch $ts",
+      );
+   }
+}
+
+setopt('custom_subject', 'subject_prefix', "[\u$list_name] ");
+
+setopt('footer_type', undef, 'append');
+
+setopt('invite', undef, 'closed');
+
+setopt('review', undef, 'owner');
+
+{  my $archive;
+
+   my @freqmap = qw(year month quarter week day);
+
+   $archive = $boolmap->{$m_cfg->{archive}};
+   my $period = $freqmap[$m_cfg->{archive_volume_frequency}];
+   my @extra;
+   push @extra, $boolmap->{$m_cfg->{archive_private}} ?
+         'web_access private' : 'web_access public';
+
+   if ($archive) {
+      addlines(
+         "archive",
+         "period $period",
+         @extra,
+      );
+      addlines(
+         "process_archive on"
+      );
+   }
+}
+
+{  my $bounce;
+
+   $bounce = $boolmap->{$m_cfg->{bounce_processing}};
+   my $notify1 = $boolmap->{$m_cfg->{bounce_notify_owner_on_disable}} ?
+		'owner' : 'none';
+   my $notify2 = $boolmap->{$m_cfg->{bounce_notify_owner_on_removal}} ?
+		'owner' : 'none';
+
+   # not sure how to map the bounce rate from mailman to sympa...
+
+   if ($bounce) {
+      addlines(
+         "bouncers_level1",
+         "notification $notify1",
+      );
+      addlines(
+         "bouncers_level2",
+         "notification $notify2",
+      );
+   }
+}
+
+setopt('remind', undef, 'monthly') if $boolmap->{$m_cfg->{send_reminders}};
+
+{  my $max_size;
+
+   my $mm_size = $m_cfg->{max_message_size};
+
+   if ($mm_size > 0) {			# zero is no limit
+      $max_size = $mm_size * 1024;
+      addlines(
+         "max_size $max_size",
+      );
+   }
+}
+
+{  my $spam_protection;
+
+   $spam_protection = $boolmap->{$m_cfg->{obscure_addresses}} ?
+			'at' : 'none';
+   addlines(
+      "spam_protection $spam_protection",
+   );
+   addlines(
+      "web_archive_spam_protection $spam_protection",
+   );
+}
+
+#
+# All done, write it out.
+#
+print join("\n\n", @s_cfg), "\n";
+
+
+sub setopt {
+   my $sopt = shift;	# sympa option name
+   my $mopt = shift;	# mailman option name
+   my $default = shift;	# default if not set (rarely happens)
+   my $map = shift;	# map mailman option values to sympa values
+   my $val;
+
+   if ($mopt && defined $m_cfg->{$mopt}) {
+      if ($map && defined $map->{$m_cfg->{$mopt}}) {
+         $val = $map->{$m_cfg->{$mopt}};
+      }
+      else {
+         $val = $m_cfg->{$mopt};
+      }
+   }
+   elsif (defined $default) {
+      $val = $default;
+   }
+   push @s_cfg, join(' ', $sopt, $val) if defined $val;
+}
+
+sub addlines {
+   push @s_cfg, join("\n", @_);
+}
